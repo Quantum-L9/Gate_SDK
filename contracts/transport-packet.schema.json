@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://constellation.local/contracts/transport-packet.schema.json",
+  "title": "TransportPacket",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "header",
+    "address",
+    "tenant",
+    "payload",
+    "security",
+    "governance",
+    "provenance",
+    "delegation_chain",
+    "hop_trace",
+    "lineage",
+    "attachments"
+  ],
+  "properties": {
+    "header": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packet_id",
+        "packet_type",
+        "action",
+        "priority",
+        "created_at",
+        "timeout_ms",
+        "schema_version",
+        "retry_count",
+        "replay_mode"
+      ],
+      "properties": {
+        "packet_id": { "type": "string", "format": "uuid" },
+        "packet_type": {
+          "type": "string",
+          "enum": [
+            "request",
+            "response",
+            "event",
+            "command",
+            "delegation",
+            "failure",
+            "replay_request",
+            "replay_response",
+            "compensation"
+          ]
+        },
+        "action": { "type": "string" },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": ["string", "null"], "format": "date-time" },
+        "timeout_ms": { "type": "integer", "minimum": 1 },
+        "schema_version": { "type": "string" },
+        "idempotency_key": { "type": ["string", "null"] },
+        "trace_id": { "type": ["string", "null"] },
+        "correlation_id": { "type": ["string", "null"] },
+        "causation_id": { "type": ["string", "null"], "format": "uuid" },
+        "retry_count": { "type": "integer", "minimum": 0 },
+        "replay_mode": { "type": "boolean" },
+        "not_before": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_node", "destination_node", "reply_to"],
+      "properties": {
+        "source_node": { "type": "string" },
+        "destination_node": { "type": "string" },
+        "reply_to": { "type": "string" }
+      }
+    },
+    "tenant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor", "on_behalf_of", "originator", "org_id"],
+      "properties": {
+        "actor": { "type": "string" },
+        "on_behalf_of": { "type": "string" },
+        "originator": { "type": "string" },
+        "org_id": { "type": "string" },
+        "user_id": { "type": ["string", "null"] }
+      }
+    },
+    "payload": { "type": "object" },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload_hash",
+        "transport_hash",
+        "classification",
+        "encryption_status",
+        "pii_fields"
+      ],
+      "properties": {
+        "payload_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "transport_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "signature": { "type": ["string", "null"] },
+        "signature_algorithm": { "type": ["string", "null"] },
+        "signing_key_id": { "type": ["string", "null"] },
+        "classification": {
+          "type": "string",
+          "enum": ["public", "internal", "confidential", "restricted"]
+        },
+        "encryption_status": {
+          "type": "string",
+          "enum": ["plaintext", "encrypted", "envelope_only"]
+        },
+        "pii_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent",
+        "compliance_tags",
+        "retention_days",
+        "redaction_applied",
+        "audit_required"
+      ],
+      "properties": {
+        "intent": { "type": "string" },
+        "compliance_tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "retention_days": { "type": "integer", "minimum": 0 },
+        "redaction_applied": { "type": "boolean" },
+        "audit_required": { "type": "boolean" },
+        "data_subject_id": { "type": ["string", "null"] }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin_kind", "requested_action", "resolved_by_gate"],
+      "properties": {
+        "origin_kind": { "type": "string", "enum": ["client", "node", "gate"] },
+        "requested_action": { "type": "string" },
+        "resolved_by_gate": { "type": "boolean" },
+        "original_source_node": { "type": ["string", "null"] }
+      }
+    },
+    "delegation_chain": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["delegator", "delegatee", "scope", "granted_at"],
+        "properties": {
+          "delegator": { "type": "string" },
+          "delegatee": { "type": "string" },
+          "scope": { "type": "array", "items": { "type": "string" } },
+          "granted_at": { "type": "string", "format": "date-time" },
+          "expires_at": { "type": ["string", "null"], "format": "date-time" },
+          "constraints": { "type": ["object", "null"] },
+          "proof": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "hop_trace": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "hop_id",
+          "packet_id",
+          "node",
+          "action",
+          "direction",
+          "status",
+          "timestamp",
+          "hop_hash"
+        ],
+        "properties": {
+          "hop_id": { "type": "string", "format": "uuid" },
+          "packet_id": { "type": "string", "format": "uuid" },
+          "node": { "type": "string" },
+          "action": { "type": "string" },
+          "direction": {
+            "type": "string",
+            "enum": ["ingress", "dispatch", "execution", "response"]
+          },
+          "status": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "attempt": { "type": ["integer", "null"], "minimum": 1 },
+          "target_node": { "type": ["string", "null"] },
+          "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+          "queue_ms": { "type": ["integer", "null"], "minimum": 0 },
+          "network_ms": { "type": ["integer", "null"], "minimum": 0 },
+          "error_code": { "type": ["string", "null"] },
+          "error_message": { "type": ["string", "null"] },
+          "previous_hop_hash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "hop_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "hop_signature": { "type": ["string", "null"] },
+          "hop_signature_algorithm": { "type": ["string", "null"] },
+          "hop_signing_key_id": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root_id", "generation"],
+      "properties": {
+        "parent_id": { "type": ["string", "null"], "format": "uuid" },
+        "root_id": { "type": "string", "format": "uuid" },
+        "generation": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attachment_id", "media_type", "uri", "content_hash", "encrypted", "size_bytes"],
+        "properties": {
+          "attachment_id": { "type": "string", "format": "uuid" },
+          "media_type": { "type": "string" },
+          "uri": { "type": "string" },
+          "content_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "encrypted": { "type": "boolean" },
+          "size_bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+node:
+  id: score
+  actions:
+    - score
+  internal_url: http://score:8001
+  priority_class: P1
+  max_concurrent: 25
+  health_endpoint: /v1/health
+  timeout_ms: 15000
+  version: 1.0.0
+  type: worker

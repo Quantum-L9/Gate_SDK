@@ -1,0 +1,61 @@
+{
+  "note": "Illustrative example for a composite workflow request.",
+  "header": {
+    "packet_id": "00000000-0000-0000-0000-000000000010",
+    "packet_type": "request",
+    "action": "full_pipeline",
+    "priority": 1,
+    "created_at": "2026-01-01T00:00:00Z",
+    "timeout_ms": 60000,
+    "schema_version": "1.0",
+    "retry_count": 0,
+    "replay_mode": false
+  },
+  "address": {
+    "source_node": "client",
+    "destination_node": "gate",
+    "reply_to": "client"
+  },
+  "tenant": {
+    "actor": "tenant-a",
+    "on_behalf_of": "tenant-a",
+    "originator": "tenant-a",
+    "org_id": "tenant-a",
+    "user_id": null
+  },
+  "payload": {
+    "entity_id": "42"
+  },
+  "security": {
+    "payload_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "transport_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "signature": null,
+    "signature_algorithm": null,
+    "signing_key_id": null,
+    "classification": "internal",
+    "encryption_status": "plaintext",
+    "pii_fields": []
+  },
+  "governance": {
+    "intent": "full_pipeline",
+    "compliance_tags": [],
+    "retention_days": 90,
+    "redaction_applied": false,
+    "audit_required": false,
+    "data_subject_id": null
+  },
+  "provenance": {
+    "origin_kind": "client",
+    "requested_action": "full_pipeline",
+    "resolved_by_gate": false,
+    "original_source_node": null
+  },
+  "delegation_chain": [],
+  "hop_trace": [],
+  "lineage": {
+    "parent_id": null,
+    "root_id": "00000000-0000-0000-0000-000000000010",
+    "generation": 0
+  },
+  "attachments": []
+}

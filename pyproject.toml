@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "constellation-node-sdk"
+version = "1.0.0"
+description = "Canonical TransportPacket SDK for Constellation worker and orchestrator nodes"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [
+  { name = "OpenAI" }
+]
+dependencies = [
+  "cryptography>=42.0.0",
+  "fastapi>=0.115.0",
+  "httpx>=0.27.0",
+  "prometheus-client>=0.20.0",
+  "pydantic>=2.8.0",
+  "python-json-logger>=2.0.7",
+  "pyyaml>=6.0.2",
+  "starlette>=0.37.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.11.0",
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.23.8",
+  "ruff>=0.6.0",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+constellation_node_sdk = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["constellation_node_sdk"]

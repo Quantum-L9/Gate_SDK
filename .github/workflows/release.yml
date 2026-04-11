@@ -1,0 +1,54 @@
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release-build:
+    name: build-release-artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Upgrade packaging toolchain
+        run: |
+          python -m pip install --upgrade pip setuptools wheel build
+
+      - name: Install package with dev dependencies
+        run: |
+          python -m pip install -e ".[dev]"
+
+      - name: Validate contracts
+        run: |
+          python scripts/validate_contracts.py
+
+      - name: Run quality gates
+        run: |
+          ruff check src tests scripts
+          mypy src
+          pytest -q
+
+      - name: Build release artifacts
+        run: |
+          python -m build
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/*

@@ -1,0 +1,11 @@
+node:
+  id: orchestrator
+  actions:
+    - full_pipeline
+  internal_url: http://orchestrator:8002
+  priority_class: P1
+  max_concurrent: 10
+  health_endpoint: /v1/health
+  timeout_ms: 30000
+  version: 1.0.0
+  type: orchestrator
