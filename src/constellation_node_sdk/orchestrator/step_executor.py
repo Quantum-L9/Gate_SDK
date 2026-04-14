@@ -4,6 +4,8 @@ import asyncio
 from typing import Any
 
 from constellation_node_sdk.gate.client import GateClient
+from constellation_node_sdk.runtime.config import get_runtime_config
+from constellation_node_sdk.runtime.observability import record_retry
 from constellation_node_sdk.transport.packet import TransportPacket
 
 from .packet_builder import build_step_packet
@@ -49,11 +51,13 @@ class StepExecutor:
         """
         policy = retry_policy or RetryPolicy()
         last_error: Exception | None = None
+        config = get_runtime_config()
+        normalized_action = action.strip().lower()
 
         for attempt in range(1, policy.max_attempts + 1):
             step_packet = build_step_packet(
                 parent=parent,
-                action=action,
+                action=normalized_action,
                 payload=payload,
                 source_node=self._source_node,
                 reply_to=self._source_node,
@@ -67,11 +71,12 @@ class StepExecutor:
                 last_error = exc
                 if not should_retry(attempt=attempt, error=exc, policy=policy):
                     break
+                record_retry(config=config, action=normalized_action)
                 delay = policy.delay_for_attempt(attempt)
                 if delay > 0:
                     await asyncio.sleep(delay)
 
-        message = f"step execution failed for action={action!r}"
+        message = f"step execution failed for action={normalized_action!r}"
         if last_error is not None:
             raise StepExecutionError(message) from last_error
         raise StepExecutionError(message)

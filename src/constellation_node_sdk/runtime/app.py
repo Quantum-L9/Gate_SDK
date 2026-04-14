@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -10,10 +11,20 @@ from constellation_node_sdk.gate.registration import register_from_env
 from constellation_node_sdk.transport.packet import TransportPacket
 
 from .config import NodeRuntimeConfig, get_runtime_config
-from .errors import raise_http_exception
+from .errors import classify_exception, raise_http_exception
 from .execution import create_error_transport_packet, execute_transport_packet
 from .lifecycle import LifecycleHook, NoOpLifecycle
-from .observability import configure_logging, metrics_response, record_request, set_readiness
+from .observability import (
+    configure_logging,
+    metrics_response,
+    record_duration,
+    record_error,
+    record_hop_depth,
+    record_packet_generation,
+    record_packet_size,
+    record_request,
+    set_readiness,
+)
 from .preflight import run_preflight
 
 
@@ -84,10 +95,15 @@ def create_node_app(
     @app.post("/v1/execute")
     async def execute(request: Request):
         packet: TransportPacket | None = None
+        start_ms = time.monotonic() * 1000
+
+        # ── 1. Parse raw body ────────────────────────────────────────────────
         try:
+            raw_body = await request.body()
             body = await request.json()
         except Exception as exc:
             record_request(config=resolved_config, action="unknown", status="invalid_json")
+            record_error(config=resolved_config, action="unknown", error_class="invalid_json")
             raise HTTPException(status_code=400, detail=f"invalid JSON body: {exc}") from exc
 
         try:
@@ -95,7 +111,21 @@ def create_node_app(
                 raise ValueError("request body must be a JSON object")
 
             packet = TransportPacket.model_validate(body)
+            action = packet.header.action
 
+            # ── 2. Pre-execution observability ───────────────────────────────
+            record_packet_size(
+                config=resolved_config,
+                action=action,
+                size_bytes=len(raw_body),
+            )
+            record_packet_generation(
+                config=resolved_config,
+                action=action,
+                generation=packet.lineage.generation,
+            )
+
+            # ── 3. Execute ───────────────────────────────────────────────────
             response_signing_key, response_signing_algorithm = _key_material_from_config(resolved_config)
 
             response_packet = await execute_transport_packet(
@@ -123,11 +153,33 @@ def create_node_app(
                 allow_private_attachment_hosts=resolved_config.allow_private_attachment_hosts,
             )
 
+            # ── 4. Post-execution observability ─────────────────────────────
+            elapsed_ms = time.monotonic() * 1000 - start_ms
             status = str(response_packet.payload.get("status", "completed")).strip().lower()
-            record_request(config=resolved_config, action=packet.header.action, status=status)
+
+            record_request(config=resolved_config, action=action, status=status)
+            record_duration(config=resolved_config, action=action, duration_ms=elapsed_ms)
+            record_hop_depth(
+                config=resolved_config,
+                action=action,
+                depth=len(response_packet.hop_trace),
+            )
+
             return JSONResponse(content=response_packet.model_dump_json_dict())
 
         except Exception as exc:
+            elapsed_ms = time.monotonic() * 1000 - start_ms
+            action = packet.header.action if packet is not None else "unknown"
+
+            # Classify the error for the error-class counter
+            error_detail = classify_exception(exc)
+            record_error(
+                config=resolved_config,
+                action=action,
+                error_class=error_detail.code,
+            )
+            record_duration(config=resolved_config, action=action, duration_ms=elapsed_ms)
+
             if packet is not None and resolved_config.return_transport_errors:
                 response_signing_key, response_signing_algorithm = _key_material_from_config(resolved_config)
                 failure_packet = create_error_transport_packet(
@@ -140,18 +192,10 @@ def create_node_app(
                     signing_algorithm=response_signing_algorithm,
                     expose_internal_errors=resolved_config.expose_internal_errors,
                 )
-                record_request(
-                    config=resolved_config,
-                    action=packet.header.action,
-                    status="failed",
-                )
+                record_request(config=resolved_config, action=action, status="failed")
                 return JSONResponse(content=failure_packet.model_dump_json_dict())
 
-            record_request(
-                config=resolved_config,
-                action="unknown" if packet is None else packet.header.action,
-                status="error",
-            )
+            record_request(config=resolved_config, action=action, status="error")
             raise_http_exception(exc)
 
     return app
