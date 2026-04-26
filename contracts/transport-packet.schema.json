@@ -48,12 +48,15 @@
             "compensation"
           ]
         },
-        "action": { "type": "string" },
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
         "priority": { "type": "integer", "minimum": 0, "maximum": 3 },
         "created_at": { "type": "string", "format": "date-time" },
         "expires_at": { "type": ["string", "null"], "format": "date-time" },
         "timeout_ms": { "type": "integer", "minimum": 1 },
-        "schema_version": { "type": "string" },
+        "schema_version": { "type": "string", "enum": ["1.0"] },
         "idempotency_key": { "type": ["string", "null"] },
         "trace_id": { "type": ["string", "null"] },
         "correlation_id": { "type": ["string", "null"] },
@@ -68,9 +71,9 @@
       "additionalProperties": false,
       "required": ["source_node", "destination_node", "reply_to"],
       "properties": {
-        "source_node": { "type": "string" },
-        "destination_node": { "type": "string" },
-        "reply_to": { "type": "string" }
+        "source_node": { "type": "string", "minLength": 1 },
+        "destination_node": { "type": "string", "minLength": 1 },
+        "reply_to": { "type": "string", "minLength": 1 }
       }
     },
     "tenant": {
@@ -78,10 +81,10 @@
       "additionalProperties": false,
       "required": ["actor", "on_behalf_of", "originator", "org_id"],
       "properties": {
-        "actor": { "type": "string" },
-        "on_behalf_of": { "type": "string" },
-        "originator": { "type": "string" },
-        "org_id": { "type": "string" },
+        "actor": { "type": "string", "minLength": 1 },
+        "on_behalf_of": { "type": "string", "minLength": 1 },
+        "originator": { "type": "string", "minLength": 1 },
+        "org_id": { "type": "string", "minLength": 1 },
         "user_id": { "type": ["string", "null"] }
       }
     },
@@ -100,7 +103,12 @@
         "payload_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "transport_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "signature": { "type": ["string", "null"] },
-        "signature_algorithm": { "type": ["string", "null"] },
+        "signature_algorithm": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "enum": ["hmac-sha256", "ed25519"] }
+          ]
+        },
         "signing_key_id": { "type": ["string", "null"] },
         "classification": {
           "type": "string",
@@ -112,7 +120,8 @@
         },
         "pii_fields": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "type": "string" },
+          "uniqueItems": true
         }
       }
     },
@@ -127,10 +136,11 @@
         "audit_required"
       ],
       "properties": {
-        "intent": { "type": "string" },
+        "intent": { "type": "string", "minLength": 1 },
         "compliance_tags": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "type": "string" },
+          "uniqueItems": true
         },
         "retention_days": { "type": "integer", "minimum": 0 },
         "redaction_applied": { "type": "boolean" },
@@ -144,7 +154,10 @@
       "required": ["origin_kind", "requested_action", "resolved_by_gate"],
       "properties": {
         "origin_kind": { "type": "string", "enum": ["client", "node", "gate"] },
-        "requested_action": { "type": "string" },
+        "requested_action": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
         "resolved_by_gate": { "type": "boolean" },
         "original_source_node": { "type": ["string", "null"] }
       }
@@ -156,9 +169,14 @@
         "additionalProperties": false,
         "required": ["delegator", "delegatee", "scope", "granted_at"],
         "properties": {
-          "delegator": { "type": "string" },
-          "delegatee": { "type": "string" },
-          "scope": { "type": "array", "items": { "type": "string" } },
+          "delegator": { "type": "string", "minLength": 1 },
+          "delegatee": { "type": "string", "minLength": 1 },
+          "scope": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1,
+            "uniqueItems": true
+          },
           "granted_at": { "type": "string", "format": "date-time" },
           "expires_at": { "type": ["string", "null"], "format": "date-time" },
           "constraints": { "type": ["object", "null"] },
@@ -184,13 +202,19 @@
         "properties": {
           "hop_id": { "type": "string", "format": "uuid" },
           "packet_id": { "type": "string", "format": "uuid" },
-          "node": { "type": "string" },
-          "action": { "type": "string" },
+          "node": { "type": "string", "minLength": 1 },
+          "action": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
           "direction": {
             "type": "string",
             "enum": ["ingress", "dispatch", "execution", "response"]
           },
-          "status": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["received", "validated", "processing", "delegated", "completed", "failed"]
+          },
           "timestamp": { "type": "string", "format": "date-time" },
           "attempt": { "type": ["integer", "null"], "minimum": 1 },
           "target_node": { "type": ["string", "null"] },
@@ -199,10 +223,20 @@
           "network_ms": { "type": ["integer", "null"], "minimum": 0 },
           "error_code": { "type": ["string", "null"] },
           "error_message": { "type": ["string", "null"] },
-          "previous_hop_hash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "previous_hop_hash": {
+            "anyOf": [
+              { "type": "null" },
+              { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            ]
+          },
           "hop_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "hop_signature": { "type": ["string", "null"] },
-          "hop_signature_algorithm": { "type": ["string", "null"] },
+          "hop_signature_algorithm": {
+            "anyOf": [
+              { "type": "null" },
+              { "type": "string", "enum": ["hmac-sha256", "ed25519"] }
+            ]
+          },
           "hop_signing_key_id": { "type": ["string", "null"] }
         }
       }
@@ -225,8 +259,8 @@
         "required": ["attachment_id", "media_type", "uri", "content_hash", "encrypted", "size_bytes"],
         "properties": {
           "attachment_id": { "type": "string", "format": "uuid" },
-          "media_type": { "type": "string" },
-          "uri": { "type": "string" },
+          "media_type": { "type": "string", "minLength": 1 },
+          "uri": { "type": "string", "minLength": 1 },
           "content_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "encrypted": { "type": "boolean" },
           "size_bytes": { "type": "integer", "minimum": 0 }
