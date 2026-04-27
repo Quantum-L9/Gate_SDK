@@ -1,11 +1,56 @@
+# Canonical worker node registration spec template.
+#
+# This file is the input to GATE_NODE_SPEC_PATH (default: engine/spec.yaml).
+# It is loaded by gate/registration.py -> load_node_spec() -> build_registration_payload().
+# All fields are validated by build_registration_payload() before POST /v1/admin/register.
+#
+# Required fields: node.id, node.actions, node.internal_url
+# Optional fields: all others (defaults shown as comments)
+#
+# Authority: contracts/NODE_REGISTRATION_SPEC.md, gate/registration.py
+# Contract: gate/registration.py build_registration_payload()
+
 node:
-  id: score
+  # REQUIRED: unique node identifier (lowercase, hyphenated)
+  # Normalized to lowercase by build_registration_payload()
+  id: my-worker-node
+
+  # REQUIRED: list of actions this node handles
+  # Each action MUST match regex ^[a-z0-9][a-z0-9-]{0,63}$ — models.py TransportHeader
+  # MUST NOT be empty — registration rejects empty action list
   actions:
-    - score
-  internal_url: http://score:8001
-  priority_class: P1
-  max_concurrent: 25
+    - my-worker-action
+    - followup-action
+
+  # REQUIRED: absolute internal URL where Gate dispatches packets to /v1/execute
+  # MUST start with http:// or https://
+  # Default pattern: http://{node.id}:8000
+  internal_url: http://my-worker-node:8000
+
+  # OPTIONAL: priority class for Gate dispatch scheduling
+  # Allowed values: P0 (highest) | P1 | P2 (default) | P3 (lowest)
+  priority_class: P2
+
+  # OPTIONAL: max concurrent in-flight requests Gate sends to this node
+  # Default: 50
+  max_concurrent: 50
+
+  # OPTIONAL: health check endpoint Gate polls for readiness
+  # Default: /v1/health (provided by create_node_app())
   health_endpoint: /v1/health
-  timeout_ms: 15000
+
+  # OPTIONAL: Gate dispatch timeout in milliseconds
+  # Default: 30000 (30 seconds)
+  # MUST be >= 1
+  timeout_ms: 30000
+
+  # OPTIONAL: node version — surfaced in Gate registry metadata
+  # Default: 1.0.0
   version: 1.0.0
+
+  # OPTIONAL: node type descriptor — surfaced in Gate registry metadata
+  # Default: custom
   type: worker
+
+  # NOTE: metadata.generated_by is always set to "constellation-node-sdk"
+  # by build_registration_payload() regardless of what is set here.
