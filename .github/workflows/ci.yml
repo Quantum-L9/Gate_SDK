@@ -1,95 +1,263 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Gate_SDK — CI Pipeline
+
+# 7 merge-blocking gates + final aggregator.
+# Branch protection MUST require: all-gates-passed ✅
+
+# Gates:
+# 1 lint — ruff check src tests scripts + ruff format --check + mypy src
+# 2 contracts — scripts/validate_contracts.py
+# 3 schema-drift — scripts/generate_schema.py + git diff --exit-code
+# 4 test — pytest -q --tb=short
+# 5 dep-audit — pip-audit CVE scan
+# 6 secret-scan — TruffleHog --only-verified
+# 7 build — python -m build → sdist + wheel artifact
+# ALL all-gates-passed — aggregator required by branch protection
+# ─────────────────────────────────────────────────────────────────────────────
+
 name: ci
 
 on:
   push:
-    branches: [main, master]
+    branches: ["main", "master"]
   pull_request:
-    branches: [main, master]
+    branches: ["main", "master"]
+  workflow_dispatch: {}
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GATE 1 — Lint + Typecheck
+# ruff check src tests scripts
+# ruff format --check src tests scripts
+# mypy src (strict=true, python_version=3.12 per pyproject.toml)
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
-  quality:
-    name: lint-type-test
+  lint:
+    name: gate-1-lint-typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12"]
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: "pip"
+          python-version: "3.12"
+          cache: pip
 
-      - name: Upgrade packaging toolchain
+      - name: Install dev dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
 
-      - name: Install package with dev dependencies
+      - name: Ruff lint
+        run: ruff check src tests scripts
+
+      - name: Ruff format check
+        run: ruff format --check src tests scripts
+
+      - name: Mypy strict
+        run: mypy src
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GATE 2 — Contract validation
+# scripts/validate_contracts.py — invariant checks.
+# Exits 1 on any failure. MERGE-BLOCKING.
+# ─────────────────────────────────────────────────────────────────────────────
+  contracts:
+    name: gate-2-contracts
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev dependencies
         run: |
+          python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
       - name: Validate contracts
-        run: |
-          python scripts/validate_contracts.py
+        run: python scripts/validate_contracts.py
 
-      - name: Normalize and verify schema
-        run: |
-          python scripts/generate_schema.py
-          git diff --exit-code contracts/transport-packet.schema.json
-
-      - name: Ruff
-        run: |
-          ruff check src tests scripts
-
-      - name: Mypy
-        run: |
-          mypy src
-
-      - name: Pytest
-        run: |
-          pytest -q
-
-  build:
-    name: build-artifacts
+# ─────────────────────────────────────────────────────────────────────────────
+# GATE 3 — Schema drift check
+# Regenerates contracts/transport-packet.schema.json from transport/models.py.
+# Fails if the committed schema does not match the generated output.
+# MERGE-BLOCKING — prevents schema drift from accumulating silently.
+# ─────────────────────────────────────────────────────────────────────────────
+  schema-drift:
+    name: gate-3-schema-drift
+    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [quality]
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
+          cache: pip
 
-      - name: Upgrade packaging toolchain
+      - name: Install dev dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel build
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Regenerate schema + check drift
+        run: |
+          python scripts/generate_schema.py
+          git diff --exit-code contracts/transport-packet.schema.json || {
+            echo "::error::Schema drift detected — run 'python scripts/generate_schema.py' locally and commit contracts/transport-packet.schema.json"
+            exit 1
+          }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GATE 4 — Tests
+# Runs after lint; independent of contracts/schema gates so failures surface
+# in parallel.
+# ─────────────────────────────────────────────────────────────────────────────
+  test:
+    name: gate-4-test
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      L9_ENVIRONMENT: "test"
+      L9_DEV_MODE: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Pytest
+        run: pytest -q --tb=short
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GATE 5 — Dependency security audit
+# pip-audit scans installed packages against OSV/PyPI vulnerability DB.
+# Any CVE finding blocks merge.
+# ─────────────────────────────────────────────────────────────────────────────
+  dep-audit:
+    name: gate-5-dep-audit
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package + audit tool
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip install pip-audit
+
+      - name: pip-audit
+        run: pip-audit
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GATE 6 — Secret scan
+# TruffleHog --only-verified scans the full diff for verified hardcoded
+# credentials, API keys, private keys, and tokens.
+# ─────────────────────────────────────────────────────────────────────────────
+  secret-scan:
+    name: gate-6-secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GATE 7 — Build sdist + wheel
+# Verifies the package builds cleanly from source.
+# Uploads dist/* as a downloadable artifact for release-publish.yml to consume.
+# Runs only after contracts + schema + test pass.
+# ─────────────────────────────────────────────────────────────────────────────
+  build:
+    name: gate-7-build
+    needs: [contracts, schema-drift, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build toolchain
+        run: python -m pip install --upgrade pip setuptools wheel build
 
       - name: Install package
-        run: |
-          python -m pip install -e .
+        run: python -m pip install -e .
 
-      - name: Build sdist and wheel
-        run: |
-          python -m build
+      - name: Build sdist + wheel
+        run: python -m build
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
         with:
           name: python-dist
           path: dist/*
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ALL GATES PASSED — aggregator
+# Branch protection MUST require this job as the sole required status check.
+# ─────────────────────────────────────────────────────────────────────────────
+  all-gates-passed:
+    name: "all-gates-passed ✅"
+    needs: [lint, contracts, schema-drift, test, dep-audit, secret-scan, build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Evaluate gates
+        run: |
+          FAILED=""
+          [[ "${{ needs.lint.result }}" != "success" ]] && FAILED="$FAILED lint"
+          [[ "${{ needs.contracts.result }}" != "success" ]] && FAILED="$FAILED contracts"
+          [[ "${{ needs.schema-drift.result }}" != "success" ]] && FAILED="$FAILED schema-drift"
+          [[ "${{ needs.test.result }}" != "success" ]] && FAILED="$FAILED test"
+          [[ "${{ needs.dep-audit.result }}" != "success" ]] && FAILED="$FAILED dep-audit"
+          [[ "${{ needs.secret-scan.result }}" != "success" ]] && FAILED="$FAILED secret-scan"
+          [[ "${{ needs.build.result }}" != "success" ]] && FAILED="$FAILED build"
+          if [[ -n "$FAILED" ]]; then
+            echo "::error::MERGE BLOCKED — failed gates:$FAILED"
+            exit 1
+          fi
+          echo "All gates passed ✅"

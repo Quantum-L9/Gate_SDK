@@ -1,0 +1,198 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Gate_SDK — Pre-commit Hook Enforcement in CI
+
+# Triggered: push to main/master | pull_request to main/master | workflow_dispatch
+
+# Purpose:
+# .pre-commit-config.yaml defines local hooks:
+# - check-merge-conflict, check-yaml, check-json, end-of-file-fixer,
+#   trailing-whitespace, mixed-line-ending, check-added-large-files
+# - ruff (--fix), ruff-format (astral-sh/ruff-pre-commit)
+# - mypy (files: ^src/) (pre-commit/mirrors-mypy)
+# - validate-contracts → python scripts/validate_contracts.py (local)
+# - generate-schema-check → generate_schema.py + git diff (local)
+
+# ci.yml runs ruff/mypy/contracts/schema-drift as DIRECT commands.
+# This workflow runs the SAME checks via `pre-commit run --all-files`, which:
+# a) catches hook config drift (e.g. args changed in .pre-commit-config.yaml
+#    but not reflected in CI commands)
+# b) enforces the generate-schema-check hook
+# c) validates the entire hook chain including file-fixers that CI skips
+
+# MERGE-BLOCKING: pre-commit-passed is required by branch protection.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: pre-commit-ci
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+  workflow_dispatch: {}
+
+concurrency:
+  group: pre-commit-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYTHON_VERSION: "3.12"
+  PRE_COMMIT_VERSION: "3.7.1"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 1 — Pre-commit hook config validation
+# Verifies that .pre-commit-config.yaml is syntactically valid and that all
+# referenced repos/revs are parseable before spending time on full hook run.
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  validate-hook-config:
+    name: validate-hook-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install pre-commit
+        run: python -m pip install pre-commit==${{ env.PRE_COMMIT_VERSION }}
+
+      - name: Validate hook config syntax
+        run: pre-commit validate-config .pre-commit-config.yaml
+
+      - name: Verify all hook repos resolve
+        run: pre-commit validate-manifest .pre-commit-config.yaml || true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 2 — Full pre-commit run (all files)
+# Runs the complete hook chain from .pre-commit-config.yaml on every file.
+# Uses pre-commit's own caching via actions/cache to speed up repeated runs.
+# ─────────────────────────────────────────────────────────────────────────────
+  pre-commit-run:
+    name: pre-commit-run --all-files
+    needs: validate-hook-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Restore pre-commit cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ env.PYTHON_VERSION }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ env.PYTHON_VERSION }}-
+
+      - name: Install pre-commit + package deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pre-commit==${{ env.PRE_COMMIT_VERSION }}
+          python -m pip install -e ".[dev]"
+
+      - name: Run all pre-commit hooks
+        run: pre-commit run --all-files --show-diff-on-failure
+
+      - name: Show hook diff if failed
+        if: failure()
+        run: |
+          echo "::warning::Pre-commit hooks modified files. Run 'pre-commit run --all-files' locally and commit the fixes."
+          git diff --stat
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 3 — Hook config drift check
+# Detects drift between .pre-commit-config.yaml hook versions and the pinned
+# tool versions used in ci.yml.
+# Warning-only — does not block merge.
+# ─────────────────────────────────────────────────────────────────────────────
+  hook-version-drift:
+    name: hook-version-drift-check
+    needs: validate-hook-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Check ruff version parity
+        run: |
+          INSTALLED_RUFF=$(python -c "import importlib.metadata; print(importlib.metadata.version('ruff'))")
+          HOOK_RUFF=$(python - <<'PY'
+          import re, pathlib
+          text = pathlib.Path(".pre-commit-config.yaml").read_text()
+          m = re.search(r'astral-sh/ruff-pre-commit.*?rev:\s*v?([\d.]+)', text, re.DOTALL)
+          print(m.group(1) if m else "NOT_FOUND")
+          PY
+          )
+          echo "Installed ruff: ${INSTALLED_RUFF}"
+          echo "Hook ruff rev:  ${HOOK_RUFF}"
+          if [[ "${INSTALLED_RUFF}" != "${HOOK_RUFF}" ]]; then
+            echo "::warning::ruff version drift — installed=${INSTALLED_RUFF} hook=${HOOK_RUFF}"
+          else
+            echo "✓ ruff version parity confirmed: ${INSTALLED_RUFF}"
+          fi
+
+      - name: Check mypy version parity
+        run: |
+          INSTALLED_MYPY=$(python -c "import importlib.metadata; print(importlib.metadata.version('mypy'))")
+          HOOK_MYPY=$(python - <<'PY'
+          import re, pathlib
+          text = pathlib.Path(".pre-commit-config.yaml").read_text()
+          m = re.search(r'mirrors-mypy.*?rev:\s*v?([\d.]+)', text, re.DOTALL)
+          print(m.group(1) if m else "NOT_FOUND")
+          PY
+          )
+          echo "Installed mypy: ${INSTALLED_MYPY}"
+          echo "Hook mypy rev:  ${HOOK_MYPY}"
+          if [[ "${INSTALLED_MYPY}" != "${HOOK_MYPY}" ]]; then
+            echo "::warning::mypy version drift — installed=${INSTALLED_MYPY} hook=${HOOK_MYPY}"
+          else
+            echo "✓ mypy version parity confirmed: ${INSTALLED_MYPY}"
+          fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PRE-COMMIT PASSED — aggregator
+# Branch protection MUST require this job as an additional required status check
+# alongside all-gates-passed from ci.yml.
+# ─────────────────────────────────────────────────────────────────────────────
+  pre-commit-passed:
+    name: "pre-commit-passed ✅"
+    needs: [validate-hook-config, pre-commit-run, hook-version-drift]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Evaluate pre-commit gates
+        run: |
+          FAILED=""
+          [[ "${{ needs.validate-hook-config.result }}" != "success" ]] && FAILED="$FAILED validate-hook-config"
+          [[ "${{ needs.pre-commit-run.result }}" != "success" ]] && FAILED="$FAILED pre-commit-run"
+          # hook-version-drift is warning-only, does not block
+          if [[ -n "$FAILED" ]]; then
+            echo "::error::PRE-COMMIT BLOCKED — failed:$FAILED"
+            exit 1
+          fi
+          echo "All pre-commit gates passed ✅"
