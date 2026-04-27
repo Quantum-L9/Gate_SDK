@@ -1,0 +1,304 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Gate_SDK — Nightly Full-Suite Regression + Coverage + Compat Matrix
+
+# Triggered: daily 02:00 UTC | workflow_dispatch (manual)
+
+# Jobs:
+# 1 multi-version-matrix — pytest across Python 3.12 + 3.13 (forward compat)
+# 2 coverage-gate        — pytest-cov enforces >= 80% line coverage
+# 3 full-integration     — all test dirs including tests/integration
+# 4 import-smoke         — clean-install import check for each submodule
+# 5 contract-spec-lint   — checks contracts/*.md for required sections
+# 6 nightly-dep-audit    — pip-audit --strict (stricter than PR gate)
+# 7 nightly-summary      — GitHub step summary of all gate results
+
+# ci.yml: lint/type/contracts/schema/test on every PR — Python 3.12 only.
+# This file owns: coverage, matrix, integration secrets, spec lint, import smoke.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      python_versions:
+        description: "Python versions to test (JSON array)"
+        type: string
+        default: '["3.12", "3.13"]'
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  COVERAGE_THRESHOLD: "80"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 1 — Multi-version compatibility matrix
+# 3.13 failures are informational (continue-on-error) but surfaced in summary.
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  multi-version-matrix:
+    name: "compat-matrix (Python ${{ matrix.python-version }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python_versions || '["3.12", "3.13"]') }}
+    continue-on-error: ${{ matrix.python-version == '3.13' }}
+    env:
+      L9_ENVIRONMENT: "test"
+      L9_DEV_MODE: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          allow-prereleases: true
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Pytest (${{ matrix.python-version }})
+        run: pytest -q --tb=short
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 2 — Coverage enforcement gate
+# Fails if coverage drops below COVERAGE_THRESHOLD (80%).
+# ─────────────────────────────────────────────────────────────────────────────
+  coverage-gate:
+    name: coverage-gate (>= ${{ env.COVERAGE_THRESHOLD }}%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      L9_ENVIRONMENT: "test"
+      L9_DEV_MODE: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev dependencies + coverage
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip install pytest-cov
+
+      - name: Pytest with coverage
+        run: |
+          pytest \
+            --cov=constellation_node_sdk \
+            --cov-report=term-missing \
+            --cov-report=html:coverage-html \
+            --cov-fail-under=${{ env.COVERAGE_THRESHOLD }} \
+            -q --tb=short
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-${{ github.run_id }}
+          path: coverage-html/
+          retention-days: 14
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 3 — Full integration test suite
+# ─────────────────────────────────────────────────────────────────────────────
+  full-integration:
+    name: full-integration-suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      L9_ENVIRONMENT: "test"
+      L9_DEV_MODE: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run full integration suite (all test dirs)
+        run: |
+          pytest \
+            tests/gate \
+            tests/orchestrator \
+            tests/runtime \
+            tests/security \
+            tests/transport \
+            tests/integration \
+            -q --tb=short -x
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 4 — Import smoke test (clean install, no dev deps)
+# Catches accidental dev-only imports in production code paths.
+# ─────────────────────────────────────────────────────────────────────────────
+  import-smoke:
+    name: import-smoke (clean install)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install production deps only (no [dev])
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Import all submodules
+        run: |
+          python -c "import constellation_node_sdk; print('✓ root')"
+          python -c "from constellation_node_sdk import gate; print('✓ gate')"
+          python -c "from constellation_node_sdk import orchestrator; print('✓ orchestrator')"
+          python -c "from constellation_node_sdk import runtime; print('✓ runtime')"
+          python -c "from constellation_node_sdk import security; print('✓ security')"
+          python -c "from constellation_node_sdk import transport; print('✓ transport')"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 5 — Contract spec lint
+# Validates that each Markdown spec in contracts/ contains required sections.
+# ─────────────────────────────────────────────────────────────────────────────
+  contract-spec-lint:
+    name: contract-spec-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check NODE_REGISTRATION_SPEC.md required sections
+        run: |
+          SPEC="contracts/NODE_REGISTRATION_SPEC.md"
+          REQUIRED=("## Purpose" "## Required Fields" "## Invariants")
+          FAILED=0
+          for section in "${REQUIRED[@]}"; do
+            if ! grep -qF "$section" "$SPEC"; then
+              echo "::error file=${SPEC}::Missing required section: '${section}'"
+              FAILED=1
+            fi
+          done
+          [[ $FAILED -eq 0 ]] && echo "✓ NODE_REGISTRATION_SPEC.md" || exit 1
+
+      - name: Check ROUTING_POLICY_SPEC.md required sections
+        run: |
+          SPEC="contracts/ROUTING_POLICY_SPEC.md"
+          REQUIRED=("## Purpose" "## Rules" "## Invariants")
+          FAILED=0
+          for section in "${REQUIRED[@]}"; do
+            if ! grep -qF "$section" "$SPEC"; then
+              echo "::error file=${SPEC}::Missing required section: '${section}'"
+              FAILED=1
+            fi
+          done
+          [[ $FAILED -eq 0 ]] && echo "✓ ROUTING_POLICY_SPEC.md" || exit 1
+
+      - name: Check TRANSPORT_PACKET_SPEC.md required sections
+        run: |
+          SPEC="contracts/TRANSPORT_PACKET_SPEC.md"
+          REQUIRED=("## Purpose" "## Fields" "## Invariants" "## Schema")
+          FAILED=0
+          for section in "${REQUIRED[@]}"; do
+            if ! grep -qF "$section" "$SPEC"; then
+              echo "::error file=${SPEC}::Missing required section: '${section}'"
+              FAILED=1
+            fi
+          done
+          [[ $FAILED -eq 0 ]] && echo "✓ TRANSPORT_PACKET_SPEC.md" || exit 1
+
+      - name: Verify transport-packet.schema.json is valid JSON
+        run: |
+          python -m json.tool contracts/transport-packet.schema.json > /dev/null
+          echo "✓ transport-packet.schema.json is valid JSON"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 6 — Nightly dependency audit (stricter than PR gate)
+# ─────────────────────────────────────────────────────────────────────────────
+  nightly-dep-audit:
+    name: nightly-dep-audit (strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package + audit tool
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip install pip-audit
+
+      - name: pip-audit (nightly strict)
+        run: pip-audit --strict
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NIGHTLY SUMMARY — aggregator + GitHub step summary report
+# ─────────────────────────────────────────────────────────────────────────────
+  nightly-summary:
+    name: "nightly-summary ✅"
+    needs:
+      - multi-version-matrix
+      - coverage-gate
+      - full-integration
+      - import-smoke
+      - contract-spec-lint
+      - nightly-dep-audit
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Build nightly summary
+        run: |
+          {
+            echo "# Nightly Regression Report — $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo ""
+            echo "| Gate | Result |"
+            echo "|---|---|"
+            echo "| multi-version-matrix | ${{ needs.multi-version-matrix.result }} |"
+            echo "| coverage-gate        | ${{ needs.coverage-gate.result }} |"
+            echo "| full-integration     | ${{ needs.full-integration.result }} |"
+            echo "| import-smoke         | ${{ needs.import-smoke.result }} |"
+            echo "| contract-spec-lint   | ${{ needs.contract-spec-lint.result }} |"
+            echo "| nightly-dep-audit    | ${{ needs.nightly-dep-audit.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any blocking gate failed
+        run: |
+          FAILED=""
+          [[ "${{ needs.coverage-gate.result }}" != "success" ]] && FAILED="$FAILED coverage-gate"
+          [[ "${{ needs.full-integration.result }}" != "success" ]] && FAILED="$FAILED full-integration"
+          [[ "${{ needs.import-smoke.result }}" != "success" ]] && FAILED="$FAILED import-smoke"
+          [[ "${{ needs.contract-spec-lint.result }}" != "success" ]] && FAILED="$FAILED contract-spec-lint"
+          [[ "${{ needs.nightly-dep-audit.result }}" != "success" ]] && FAILED="$FAILED nightly-dep-audit"
+          if [[ -n "$FAILED" ]]; then
+            echo "::error::NIGHTLY FAILED — gates:$FAILED"
+            exit 1
+          fi
+          echo "Nightly regression complete ✅"
