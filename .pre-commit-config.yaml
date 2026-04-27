@@ -21,24 +21,20 @@ repos:
     rev: v1.11.2
     hooks:
       - id: mypy
-        additional_dependencies:
-          - pydantic>=2.8.0
-          - fastapi>=0.115.0
-          - httpx>=0.27.0
-          - cryptography>=42.0.0
-          - pyyaml>=6.0.2
         files: ^src/
 
   - repo: local
     hooks:
       - id: validate-contracts
         name: validate-contracts
+        language: python
         entry: python scripts/validate_contracts.py
-        language: system
         pass_filenames: false
+        always_run: true
 
       - id: generate-schema-check
         name: generate-schema-check
+        language: python
         entry: bash -c 'python scripts/generate_schema.py && git diff --exit-code contracts/transport-packet.schema.json'
-        language: system
         pass_filenames: false
+        always_run: true
