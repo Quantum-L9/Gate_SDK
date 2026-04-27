@@ -48,7 +48,9 @@ def build_registration_payload(spec: dict[str, Any]) -> dict[str, Any]:
 
     actions = [str(action).strip().lower() for action in actions_raw if str(action).strip()]
     if not actions:
-        raise ValueError(f"spec.yaml node.actions must contain at least one non-blank action (node: {node_id})")
+        raise ValueError(
+            f"spec.yaml node.actions must contain at least one non-blank action (node: {node_id})"
+        )
 
     internal_url = str(node.get("internal_url", f"http://{node_id}:8000")).strip().rstrip("/")
     if not internal_url:
@@ -60,7 +62,8 @@ def build_registration_payload(spec: dict[str, Any]) -> dict[str, Any]:
             "supported_actions": actions,
             "priority_class": str(node.get("priority_class", "P2")).strip() or "P2",
             "max_concurrent": int(node.get("max_concurrent", 50)),
-            "health_endpoint": str(node.get("health_endpoint", "/v1/health")).strip() or "/v1/health",
+            "health_endpoint": str(node.get("health_endpoint", "/v1/health")).strip()
+            or "/v1/health",
             "timeout_ms": int(node.get("timeout_ms", 30000)),
             "metadata": {
                 "version": str(node.get("version", "1.0.0")).strip() or "1.0.0",
@@ -91,7 +94,7 @@ async def register_with_gate(
     except (FileNotFoundError, ValueError):
         return False
 
-    node_id = next(iter(payload))
+    _node_id = next(iter(payload))
     url = f"{gate_url.rstrip('/')}/v1/admin/register"
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if admin_token:

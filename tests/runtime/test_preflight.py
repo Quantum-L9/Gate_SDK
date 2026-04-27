@@ -46,10 +46,12 @@ def test_run_preflight_accepts_valid_config() -> None:
 
 
 def test_node_runtime_config_rejects_invalid_idempotency_action() -> None:
+    # model_copy() in Pydantic v2 does NOT re-trigger model_validator by default.
+    # Construct a new instance directly so validate_security_profile() runs.
+    base = _base_config().model_dump()
+    base["require_idempotency_for_actions"] = ("unknown",)
     with pytest.raises(ValueError):
-        _base_config().model_copy(
-            update={"require_idempotency_for_actions": ("unknown",)}
-        )
+        NodeRuntimeConfig(**base)
 
 
 def test_run_preflight_rejects_missing_attachment_schemes_when_attachments_enabled() -> None:

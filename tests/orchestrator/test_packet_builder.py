@@ -6,7 +6,7 @@ from constellation_node_sdk.transport.packet import create_transport_packet
 
 def test_build_step_packet_targets_gate_and_preserves_root_lineage() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"workflow": "full_pipeline"},
         tenant="tenant-a",
         destination_node="orchestrator",
@@ -40,7 +40,7 @@ def test_build_step_packet_targets_gate_and_preserves_root_lineage() -> None:
 
 def test_build_step_packet_requires_non_blank_action() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={},
         tenant="tenant-a",
         destination_node="orchestrator",

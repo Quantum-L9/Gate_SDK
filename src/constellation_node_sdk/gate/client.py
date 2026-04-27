@@ -28,7 +28,9 @@ class GateClient:
     def gate_url(self) -> str:
         return self._config.gate_url
 
-    def _transport_key_resolver(self) -> Callable[[str | None], str | bytes | None] | Mapping[str, str | bytes] | None:
+    def _transport_key_resolver(
+        self,
+    ) -> Callable[[str | None], str | bytes | None] | Mapping[str, str | bytes] | None:
         if not self._config.verifying_keys and self._config.signing_key is None:
             return None
         return self._config.resolve_verifying_key
@@ -37,7 +39,9 @@ class GateClient:
         if self._config.signing_key is None:
             return packet
         if self._config.signing_key_id is None or self._config.signing_algorithm is None:
-            raise ValueError("signing_key_id and signing_algorithm are required when signing_key is configured")
+            raise ValueError(
+                "signing_key_id and signing_algorithm are required when signing_key is configured"
+            )
         return sign_transport_packet(
             packet,
             key=self._config.signing_key,

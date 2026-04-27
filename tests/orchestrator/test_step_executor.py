@@ -23,7 +23,7 @@ class FakeGateClient:
 @pytest.mark.asyncio
 async def test_step_executor_builds_gate_bound_step_packet() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"entity_id": "42"},
         tenant="tenant-a",
         destination_node="orchestrator",
@@ -60,7 +60,7 @@ async def test_step_executor_builds_gate_bound_step_packet() -> None:
 @pytest.mark.asyncio
 async def test_step_executor_retries_then_succeeds() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"entity_id": "42"},
         tenant="tenant-a",
         destination_node="orchestrator",
@@ -92,7 +92,7 @@ async def test_step_executor_retries_then_succeeds() -> None:
 @pytest.mark.asyncio
 async def test_step_executor_raises_after_retry_exhaustion() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"entity_id": "42"},
         tenant="tenant-a",
         destination_node="orchestrator",
@@ -107,14 +107,16 @@ async def test_step_executor_raises_after_retry_exhaustion() -> None:
             parent=parent,
             action="score",
             payload={"entity_id": "42"},
-            retry_policy=RetryPolicy(max_attempts=2, initial_delay_seconds=0.0, max_delay_seconds=0.0),
+            retry_policy=RetryPolicy(
+                max_attempts=2, initial_delay_seconds=0.0, max_delay_seconds=0.0
+            ),
         )
 
 
 @pytest.mark.asyncio
 async def test_step_executor_raises_on_failure_packet() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"entity_id": "42"},
         tenant="tenant-a",
         destination_node="orchestrator",
@@ -144,5 +146,7 @@ async def test_step_executor_raises_on_failure_packet() -> None:
             parent=parent,
             action="score",
             payload={"entity_id": "42"},
-            retry_policy=RetryPolicy(max_attempts=1, initial_delay_seconds=0.0, max_delay_seconds=0.0),
+            retry_policy=RetryPolicy(
+                max_attempts=1, initial_delay_seconds=0.0, max_delay_seconds=0.0
+            ),
         )

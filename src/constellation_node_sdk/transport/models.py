@@ -116,7 +116,7 @@ class TransportHeader(BaseModel):
         return normalize_optional_string(value)
 
     @model_validator(mode="after")
-    def validate_header(self) -> "TransportHeader":
+    def validate_header(self) -> TransportHeader:
         if not 0 <= self.priority <= 3:
             raise ValueError("priority must be between 0 and 3")
         if self.expires_at is not None and self.expires_at <= self.created_at:
@@ -209,7 +209,7 @@ class TransportSecurity(BaseModel):
         return normalized
 
     @model_validator(mode="after")
-    def validate_signature_state(self) -> "TransportSecurity":
+    def validate_signature_state(self) -> TransportSecurity:
         if self.signature is not None and self.signature_algorithm is None:
             raise ValueError("signature_algorithm is required when signature is present")
         if self.signature_algorithm is not None and self.signature is None:
@@ -347,7 +347,9 @@ class TransportHop(BaseModel):
             raise ValueError("timestamp must not be null")
         return normalized
 
-    @field_validator("target_node", "error_code", "error_message", "hop_signature", "hop_signing_key_id")
+    @field_validator(
+        "target_node", "error_code", "error_message", "hop_signature", "hop_signing_key_id"
+    )
     @classmethod
     def validate_optional_strings(cls, value: str | None) -> str | None:
         return normalize_optional_string(value)
@@ -371,12 +373,14 @@ class TransportHop(BaseModel):
         return normalized
 
     @model_validator(mode="after")
-    def validate_hop(self) -> "TransportHop":
+    def validate_hop(self) -> TransportHop:
         if self.direction == "dispatch" and self.target_node is None:
             raise ValueError("dispatch hops require target_node")
         if self.hop_signature is not None:
             if self.hop_signature_algorithm is None:
-                raise ValueError("hop_signature_algorithm is required when hop_signature is present")
+                raise ValueError(
+                    "hop_signature_algorithm is required when hop_signature is present"
+                )
             if self.hop_signing_key_id is None:
                 raise ValueError("hop_signing_key_id is required when hop_signature is present")
         if self.hop_signature_algorithm is not None and self.hop_signature is None:
@@ -435,7 +439,7 @@ class DelegationLink(BaseModel):
         return normalize_optional_string(value)
 
     @model_validator(mode="after")
-    def validate_expiry(self) -> "DelegationLink":
+    def validate_expiry(self) -> DelegationLink:
         if self.expires_at is not None and self.expires_at <= self.granted_at:
             raise ValueError("expires_at must be later than granted_at")
         return self

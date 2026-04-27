@@ -46,7 +46,7 @@ class TransportPacket(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_integrity(self) -> "TransportPacket":
+    def validate_integrity(self) -> TransportPacket:
         expected_payload_hash = compute_payload_hash(self.payload)
         if self.security.payload_hash != expected_payload_hash:
             raise TransportIntegrityError("payload_hash does not match payload")
@@ -61,7 +61,7 @@ class TransportPacket(BaseModel):
         """Return a JSON-safe dict representation."""
         return self.model_dump(mode="json", exclude_none=True)
 
-    def with_hop(self, hop: TransportHop) -> "TransportPacket":
+    def with_hop(self, hop: TransportHop) -> TransportPacket:
         """
         Append a hop without mutating the signed transport core.
 
@@ -105,7 +105,7 @@ class TransportPacket(BaseModel):
         timeout_ms: int | None = None,
         not_before: datetime | None = None,
         replay_mode: bool | None = None,
-    ) -> "TransportPacket":
+    ) -> TransportPacket:
         """Create an immutable child packet with correct lineage and refreshed hashes."""
         new_header = TransportHeader(
             packet_id=uuid4(),
@@ -134,7 +134,9 @@ class TransportPacket(BaseModel):
         new_payload = dict(self.payload if payload is None else payload)
         new_governance = governance or self.governance
         new_provenance = provenance or self.provenance
-        new_delegation_chain = self.delegation_chain + ((delegation_link,) if delegation_link is not None else ())
+        new_delegation_chain = self.delegation_chain + (
+            (delegation_link,) if delegation_link is not None else ()
+        )
         new_hop_trace = self.hop_trace + ((hop,) if hop is not None else ())
         new_lineage = TransportLineage(
             parent_id=self.header.packet_id,
@@ -180,7 +182,9 @@ def _default_provenance(*, source_node: str, action: str) -> RoutingProvenance:
     )
 
 
-def _finalize_transport_packet(packet: TransportPacket, *, preserve_signature: bool) -> TransportPacket:
+def _finalize_transport_packet(
+    packet: TransportPacket, *, preserve_signature: bool
+) -> TransportPacket:
     payload_hash = compute_payload_hash(packet.payload)
     provisional = packet.model_copy(
         update={
@@ -189,8 +193,12 @@ def _finalize_transport_packet(packet: TransportPacket, *, preserve_signature: b
                     "payload_hash": payload_hash,
                     "transport_hash": "0" * 64,
                     "signature": packet.security.signature if preserve_signature else None,
-                    "signature_algorithm": packet.security.signature_algorithm if preserve_signature else None,
-                    "signing_key_id": packet.security.signing_key_id if preserve_signature else None,
+                    "signature_algorithm": packet.security.signature_algorithm
+                    if preserve_signature
+                    else None,
+                    "signing_key_id": packet.security.signing_key_id
+                    if preserve_signature
+                    else None,
                 }
             )
         }
@@ -208,8 +216,12 @@ def _finalize_transport_packet(packet: TransportPacket, *, preserve_signature: b
                 update={
                     "transport_hash": transport_hash,
                     "signature": packet.security.signature if signature_still_valid else None,
-                    "signature_algorithm": packet.security.signature_algorithm if signature_still_valid else None,
-                    "signing_key_id": packet.security.signing_key_id if signature_still_valid else None,
+                    "signature_algorithm": packet.security.signature_algorithm
+                    if signature_still_valid
+                    else None,
+                    "signing_key_id": packet.security.signing_key_id
+                    if signature_still_valid
+                    else None,
                 }
             )
         }
@@ -305,7 +317,8 @@ def create_transport_packet(
             pii_fields=(),
         ),
         governance=governance,
-        provenance=provenance or _default_provenance(source_node=normalized_source, action=normalized_action),
+        provenance=provenance
+        or _default_provenance(source_node=normalized_source, action=normalized_action),
         delegation_chain=(),
         hop_trace=(),
         lineage=TransportLineage(

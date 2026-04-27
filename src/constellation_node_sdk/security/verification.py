@@ -79,7 +79,9 @@ def verify_transport_packet_signature(
 
     key = _resolve_key(key_resolver, packet.security.signing_key_id)
     if key is None:
-        raise TransportAuthenticationError("no verifying key available for transport signature verification")
+        raise TransportAuthenticationError(
+            "no verifying key available for transport signature verification"
+        )
 
     if packet.security.signature_algorithm == "hmac-sha256":
         expected = hmac.new(
@@ -100,4 +102,6 @@ def verify_transport_packet_signature(
         except (ValueError, InvalidSignature) as exc:
             raise TransportAuthenticationError("invalid ed25519 transport signature") from exc
 
-    raise TransportAuthenticationError(f"unsupported signature algorithm: {packet.security.signature_algorithm}")
+    raise TransportAuthenticationError(
+        f"unsupported signature algorithm: {packet.security.signature_algorithm}"
+    )

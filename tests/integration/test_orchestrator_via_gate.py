@@ -19,7 +19,7 @@ class FakeGateClient:
 @pytest.mark.asyncio
 async def test_orchestrator_executes_multiple_steps_via_gate() -> None:
     parent = create_transport_packet(
-        action="full_pipeline",
+        action="full-pipeline",
         payload={"entity_id": "42"},
         tenant="tenant-a",
         destination_node="orchestrator",

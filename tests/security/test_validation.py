@@ -4,6 +4,11 @@ import pytest
 
 from constellation_node_sdk.security.signing import sign_transport_packet
 from constellation_node_sdk.security.validation import validate_transport_packet
+from constellation_node_sdk.transport.errors import (
+    TransportAuthenticationError,
+    TransportAuthorizationError,
+    TransportValidationError,
+)
 from constellation_node_sdk.transport.packet import create_transport_packet
 
 
@@ -41,7 +46,7 @@ def test_validate_transport_packet_rejects_wrong_destination_for_local_node() ->
         reply_to="client",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(TransportAuthorizationError):
         validate_transport_packet(
             packet,
             local_node="worker-a",
@@ -59,7 +64,7 @@ def test_validate_transport_packet_rejects_missing_signature_when_required() -> 
         reply_to="client",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(TransportAuthenticationError):
         validate_transport_packet(
             packet,
             require_signature=True,
@@ -77,7 +82,7 @@ def test_validate_transport_packet_enforces_idempotency_for_selected_actions() -
         reply_to="client",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(TransportValidationError):
         validate_transport_packet(
             packet,
             required_idempotency_actions=("score",),

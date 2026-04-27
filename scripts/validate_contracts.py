@@ -17,6 +17,7 @@ Exit codes:
   0 -- all checks pass
   1 -- one or more checks failed
 """
+
 from __future__ import annotations
 
 import json
@@ -66,8 +67,17 @@ else:
 
 required = set(schema.get("required", []))
 expected = {
-    "header", "address", "tenant", "payload", "security", "governance",
-    "provenance", "delegation_chain", "hop_trace", "lineage", "attachments",
+    "header",
+    "address",
+    "tenant",
+    "payload",
+    "security",
+    "governance",
+    "provenance",
+    "delegation_chain",
+    "hop_trace",
+    "lineage",
+    "attachments",
 }
 missing = expected - required
 extra = required - expected
@@ -99,9 +109,7 @@ if has_algo:
 else:
     fail("security.signature_algorithm must have enum constraint [hmac-sha256, ed25519]")
 
-status_def = (
-    props.get("hop_trace", {}).get("items", {}).get("properties", {}).get("status", {})
-)
+status_def = props.get("hop_trace", {}).get("items", {}).get("properties", {}).get("status", {})
 has_status = "enum" in status_def or any("enum" in b for b in status_def.get("anyOf", []))
 if has_status:
     ok("hop_trace.items.status has enum constraint")
@@ -109,9 +117,14 @@ else:
     fail("hop_trace.items.status must have enum constraint")
 
 hop_sig_alg_def = (
-    props.get("hop_trace", {}).get("items", {}).get("properties", {}).get("hop_signature_algorithm", {})
+    props.get("hop_trace", {})
+    .get("items", {})
+    .get("properties", {})
+    .get("hop_signature_algorithm", {})
 )
-has_hop_sig_alg = "enum" in hop_sig_alg_def or any("enum" in b for b in hop_sig_alg_def.get("anyOf", []))
+has_hop_sig_alg = "enum" in hop_sig_alg_def or any(
+    "enum" in b for b in hop_sig_alg_def.get("anyOf", [])
+)
 if has_hop_sig_alg:
     ok("hop_trace.items.hop_signature_algorithm has enum constraint")
 else:

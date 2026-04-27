@@ -29,7 +29,7 @@ def test_create_transport_packet_builds_canonical_root_packet() -> None:
 
 def test_transport_packet_derive_creates_child_with_incremented_lineage() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"workflow": "full_pipeline"},
         tenant="tenant-a",
         destination_node="gate",

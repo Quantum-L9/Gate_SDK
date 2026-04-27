@@ -11,7 +11,9 @@ def assert_node_origin_packet(packet: TransportPacket) -> None:
     """
     source = packet.address.source_node.strip().lower()
     if source in {"", "client"}:
-        raise ValueError("Gate client only accepts node-originated packets with non-client source_node")
+        raise ValueError(
+            "Gate client only accepts node-originated packets with non-client source_node"
+        )
 
     provenance_origin = packet.provenance.origin_kind.strip().lower()
     if provenance_origin != "node":
@@ -42,13 +44,15 @@ def assert_local_node_identity(packet: TransportPacket, *, local_node: str) -> N
     normalized_local = local_node.strip().lower()
     if packet.address.source_node != normalized_local:
         raise ValueError(
-            f"packet source_node {packet.address.source_node!r} does not match local node {normalized_local!r}"
+            f"packet source_node {packet.address.source_node!r} "
+            f"does not match local node {normalized_local!r}"
         )
 
     original_source = packet.provenance.original_source_node
     if original_source is not None and original_source != normalized_local:
         raise ValueError(
-            "packet.provenance.original_source_node must match local node for node-originated packets"
+            "packet.provenance.original_source_node must match "
+            "local node for node-originated packets"
         )
 
 

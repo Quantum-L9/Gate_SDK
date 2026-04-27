@@ -3,8 +3,14 @@ from __future__ import annotations
 import logging
 import sys
 
-from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, generate_latest
-from pythonjsonlogger import jsonlogger
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    generate_latest,
+)
+from pythonjsonlogger.json import JsonFormatter
 from starlette.responses import Response
 
 from .config import NodeRuntimeConfig
@@ -33,9 +39,7 @@ def configure_logging(config: NodeRuntimeConfig) -> None:
     root.setLevel(logging.INFO)
 
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
-    )
+    handler.setFormatter(JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     root.addHandler(handler)
 
 

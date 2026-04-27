@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import pytest
 
+from constellation_node_sdk.transport.errors import TransportValidationError
 from constellation_node_sdk.transport.lineage import derive_lineage, validate_parent_child_lineage
 from constellation_node_sdk.transport.packet import create_transport_packet
 
 
 def test_derive_lineage_matches_parent_relationship() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"workflow": "full_pipeline"},
         tenant="tenant-a",
         destination_node="gate",
@@ -25,7 +26,7 @@ def test_derive_lineage_matches_parent_relationship() -> None:
 
 def test_validate_parent_child_lineage_accepts_valid_child() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={},
         tenant="tenant-a",
         destination_node="gate",
@@ -45,7 +46,7 @@ def test_validate_parent_child_lineage_accepts_valid_child() -> None:
 
 def test_validate_parent_child_lineage_rejects_invalid_child() -> None:
     parent = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={},
         tenant="tenant-a",
         destination_node="gate",
@@ -61,5 +62,5 @@ def test_validate_parent_child_lineage_rejects_invalid_child() -> None:
         reply_to="orchestrator",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(TransportValidationError):
         validate_parent_child_lineage(parent, child)

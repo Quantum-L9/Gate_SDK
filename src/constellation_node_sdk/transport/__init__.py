@@ -12,7 +12,11 @@ from constellation_node_sdk.transport.errors import (
     TransportNotYetValidError,
     TransportValidationError,
 )
-from constellation_node_sdk.transport.hashing import canonical_json, compute_payload_hash, compute_transport_hash
+from constellation_node_sdk.transport.hashing import (
+    canonical_json,
+    compute_payload_hash,
+    compute_transport_hash,
+)
 from constellation_node_sdk.transport.hop_trace import (
     compute_hop_hash,
     last_hop_hash,

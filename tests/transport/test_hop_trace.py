@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from constellation_node_sdk.transport.errors import TransportIntegrityError
 from constellation_node_sdk.transport.hop_trace import (
     compute_hop_hash,
     last_hop_hash,
@@ -116,5 +117,5 @@ def test_validate_hop_trace_detects_tampering() -> None:
     tampered_hop = packet.hop_trace[0].model_copy(update={"status": "failed"})
     tampered_packet = packet.model_copy(update={"hop_trace": (tampered_hop,)})
 
-    with pytest.raises(Exception):
+    with pytest.raises(TransportIntegrityError):
         validate_hop_trace(tampered_packet)

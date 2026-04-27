@@ -6,7 +6,7 @@ from constellation_node_sdk.transport.packet import create_transport_packet
 
 def test_merge_identity_replaces_accumulated_payload() -> None:
     current = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"a": 1, "b": 2},
         tenant="tenant-a",
         destination_node="orchestrator",
@@ -28,7 +28,7 @@ def test_merge_identity_replaces_accumulated_payload() -> None:
 
 def test_merge_results_prefers_response_data_dict() -> None:
     current = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"entity_id": "42", "name": "Example Corp"},
         tenant="tenant-a",
         destination_node="orchestrator",
@@ -55,7 +55,7 @@ def test_merge_results_prefers_response_data_dict() -> None:
 
 def test_merge_payload_merges_full_response_payload() -> None:
     current = create_transport_packet(
-        action="workflow.execute",
+        action="workflow-execute",
         payload={"entity_id": "42"},
         tenant="tenant-a",
         destination_node="orchestrator",
