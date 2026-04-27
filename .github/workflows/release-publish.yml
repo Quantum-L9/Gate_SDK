@@ -184,7 +184,7 @@ jobs:
           twine check dist/*
 
       - name: Upload dist artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-dist-${{ needs.verify-tag.outputs.version }}
           path: dist/*
@@ -219,7 +219,7 @@ jobs:
             --outfile sbom-${{ needs.verify-tag.outputs.version }}.cdx.json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ needs.verify-tag.outputs.version }}
           path: sbom-${{ needs.verify-tag.outputs.version }}.cdx.json
