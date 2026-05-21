@@ -73,7 +73,9 @@ class NodeRuntimeConfig(BaseModel):
     verify_hop_signatures: bool = False
 
     gate_url: str | None = None
-    host: str = "0.0.0.0"
+    # Default to loopback — containers must set HOST=0.0.0.0 explicitly via env var.
+    # This prevents accidental public binding on bare-metal or dev environments.
+    host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
 
     @field_validator(
@@ -104,7 +106,9 @@ class NodeRuntimeConfig(BaseModel):
     def validate_signing_algorithm(cls, value: str) -> str:
         normalized = value.strip().lower()
         if normalized not in _ALLOWED_SIGNING_ALGORITHMS:
-            raise ValueError(f"signing_algorithm must be one of {sorted(_ALLOWED_SIGNING_ALGORITHMS)}")
+            raise ValueError(
+                f"signing_algorithm must be one of {sorted(_ALLOWED_SIGNING_ALGORITHMS)}"
+            )
         return normalized
 
     @field_validator(
@@ -114,7 +118,7 @@ class NodeRuntimeConfig(BaseModel):
         "attachment_allowed_schemes",
     )
     @classmethod
-    def validate_string_tuples(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+    def validate_string_tuples(cls, value: tuple[str, ...]) -> tuple[str, ...]) -> tuple[str, ...]:
         normalized = tuple(item.strip().lower() for item in value if item.strip())
         if len(set(normalized)) != len(normalized):
             raise ValueError("tuple entries must not contain duplicates")
@@ -155,7 +159,7 @@ class NodeRuntimeConfig(BaseModel):
         return normalized
 
     @model_validator(mode="after")
-    def validate_security_profile(self) -> "NodeRuntimeConfig":
+    def validate_security_profile(self) -> NodeRuntimeConfig:
         if self.environment in {"staging", "prod"} and self.dev_mode:
             raise ValueError("dev_mode cannot be enabled in staging or prod")
 
@@ -177,7 +181,9 @@ class NodeRuntimeConfig(BaseModel):
             raise ValueError("max_attachment_size_bytes must not exceed max_packet_bytes")
 
         if self.max_attachments > 0 and not self.attachment_allowed_schemes:
-            raise ValueError("attachment_allowed_schemes must be configured when attachments are enabled")
+            raise ValueError(
+                "attachment_allowed_schemes must be configured when attachments are enabled"
+            )
 
         return self
 
@@ -211,7 +217,8 @@ def get_runtime_config() -> NodeRuntimeConfig:
         signing_key_id=os.getenv("L9_SIGNING_KEY_ID"),
         verifying_keys=_env_json_map("L9_VERIFYING_KEYS_JSON"),
         allowed_actions=_env_tuple("L9_ALLOWED_ACTIONS"),
-        allowed_packet_types=_env_tuple("L9_ALLOWED_PACKET_TYPES") or ("request", "command", "delegation", "replay_request"),
+        allowed_packet_types=_env_tuple("L9_ALLOWED_PACKET_TYPES")
+        or ("request", "command", "delegation", "replay_request"),
         require_idempotency_for_actions=_env_tuple("L9_REQUIRE_IDEMPOTENCY_FOR_ACTIONS"),
         allowed_clock_skew_seconds=int(os.getenv("L9_ALLOWED_CLOCK_SKEW_SECONDS", "30")),
         max_packet_bytes=int(os.getenv("L9_MAX_PACKET_BYTES", "262144")),
@@ -224,6 +231,8 @@ def get_runtime_config() -> NodeRuntimeConfig:
         replay_enabled=_env_bool("L9_REPLAY_ENABLED", True),
         verify_hop_signatures=_env_bool("L9_VERIFY_HOP_SIGNATURES", False),
         gate_url=os.getenv("GATE_URL"),
-        host=os.getenv("HOST", "0.0.0.0"),
+        # HOST env var overrides the safe 127.0.0.1 default.
+        # In containers set HOST=0.0.0.0. On bare metal leave unset.
+        host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "8000")),
     )
