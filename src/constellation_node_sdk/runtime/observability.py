@@ -3,7 +3,13 @@ from __future__ import annotations
 import logging
 import sys
 
-from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    generate_latest,
+)
 from pythonjsonlogger import jsonlogger
 from starlette.responses import Response
 

@@ -66,6 +66,7 @@ def _extract_payload(result: object) -> dict[str, object]:
 async def execute_transport_packet(
     packet: TransportPacket,
     *,
+    execution_mode: str = "execute",
     node_name: str,
     signing_key: bytes | str | None = None,
     signing_private_key: str | None = None,
@@ -135,7 +136,9 @@ async def execute_transport_packet(
             timeout=processing_packet.header.timeout_ms / 1000,
         )
     except TimeoutError as exc:
-        raise TimeoutError(f"handler timeout after {processing_packet.header.timeout_ms}ms") from exc
+        raise TimeoutError(
+            f"handler timeout after {processing_packet.header.timeout_ms}ms"
+        ) from exc
 
     if isinstance(result, TransportPacket):
         response_packet = result
@@ -150,7 +153,8 @@ async def execute_transport_packet(
         )
 
     payload_status = str(response_packet.payload.get("status", "completed")).strip().lower()
-    if payload_status not in {"received", "validated", "processing", "delegated", "completed", "failed"}:
+    valid_statuses = {"received", "validated", "processing", "delegated", "completed", "failed"}
+    if payload_status not in valid_statuses:
         payload_status = "completed"
 
     response_packet = response_packet.with_hop(
@@ -169,7 +173,9 @@ async def execute_transport_packet(
     )
     if resolved_signing_key is not None:
         if signing_key_id is None or signing_algorithm is None:
-            raise ValueError("signing_key_id and signing_algorithm are required when signing responses")
+            raise ValueError(
+                "signing_key_id and signing_algorithm are required when signing responses"
+            )
         response_packet = sign_transport_packet(
             response_packet,
             key=resolved_signing_key,
@@ -225,7 +231,9 @@ def create_error_transport_packet(
     )
     if resolved_signing_key is not None:
         if signing_key_id is None or signing_algorithm is None:
-            raise ValueError("signing_key_id and signing_algorithm are required when signing error responses")
+            raise ValueError(
+                "signing_key_id and signing_algorithm are required when signing error responses"
+            )
         response_packet = sign_transport_packet(
             response_packet,
             key=resolved_signing_key,

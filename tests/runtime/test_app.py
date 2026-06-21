@@ -7,6 +7,7 @@ from constellation_node_sdk.runtime.config import NodeRuntimeConfig
 from constellation_node_sdk.runtime.handlers import clear_handlers, register_handler
 from constellation_node_sdk.runtime.lifecycle import NoOpLifecycle
 from constellation_node_sdk.transport.packet import create_transport_packet
+from constellation_node_sdk.transport.provenance import RoutingProvenance
 
 
 def test_node_app_health_and_execute_endpoints_work() -> None:
@@ -73,6 +74,12 @@ def test_node_app_health_and_execute_endpoints_work() -> None:
             destination_node="score",
             source_node="gate",
             reply_to="gate",
+            provenance=RoutingProvenance(
+                origin_kind="client",
+                requested_action="score",
+                resolved_by_gate=True,
+                route_kind="external_ingress",
+            ),
         )
         response = client.post("/v1/execute", json=packet.model_dump_json_dict())
 
@@ -141,6 +148,12 @@ def test_node_app_returns_failure_packet_for_handler_error() -> None:
             destination_node="worker-a",
             source_node="gate",
             reply_to="gate",
+            provenance=RoutingProvenance(
+                origin_kind="client",
+                requested_action="explode",
+                resolved_by_gate=True,
+                route_kind="external_ingress",
+            ),
         )
         response = client.post("/v1/execute", json=packet.model_dump_json_dict())
 

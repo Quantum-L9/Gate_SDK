@@ -47,8 +47,18 @@ def test_run_preflight_accepts_valid_config() -> None:
 
 def test_node_runtime_config_rejects_invalid_idempotency_action() -> None:
     with pytest.raises(ValueError):
-        _base_config().model_copy(
-            update={"require_idempotency_for_actions": ("unknown",)}
+        NodeRuntimeConfig(
+            environment="test",
+            node_name="score",
+            service_name="score-node",
+            service_version="1.0.0",
+            dev_mode=True,
+            allowed_actions=("score",),
+            allowed_packet_types=("request",),
+            require_idempotency_for_actions=("unknown",),
+            max_attachments=0,
+            max_attachment_size_bytes=0,
+            attachment_allowed_schemes=(),
         )
 
 

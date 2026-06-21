@@ -31,7 +31,9 @@ def _validate_security_profile(config: NodeRuntimeConfig) -> None:
 
     if config.signing_algorithm == "ed25519":
         if not config.signing_private_key:
-            raise PreflightFailure("ed25519 requires signing_private_key when signatures are required")
+            raise PreflightFailure(
+                "ed25519 requires signing_private_key when signatures are required"
+            )
         return
 
     raise PreflightFailure(f"unsupported signing algorithm: {config.signing_algorithm}")
@@ -50,11 +52,14 @@ def _validate_action_configuration(config: NodeRuntimeConfig) -> None:
         invalid = sorted(required_idempotency - allowed_actions)
         joined = ", ".join(invalid)
         raise PreflightFailure(
-            f"require_idempotency_for_actions contains actions not present in allowed_actions: {joined}"
+            "require_idempotency_for_actions contains actions"
+            f" not present in allowed_actions: {joined}"
         )
 
     if "response" in allowed_actions or "failure" in allowed_actions:
-        raise PreflightFailure("allowed_actions must list executable inbound actions only, not response packet types")
+        raise PreflightFailure(
+            "allowed_actions must list executable inbound actions only, not response packet types"
+        )
 
 
 def _validate_attachment_configuration(config: NodeRuntimeConfig) -> None:
@@ -62,7 +67,9 @@ def _validate_attachment_configuration(config: NodeRuntimeConfig) -> None:
         raise PreflightFailure("max_attachment_size_bytes must not exceed max_packet_bytes")
 
     if config.max_attachments > 0 and not config.attachment_allowed_schemes:
-        raise PreflightFailure("attachment_allowed_schemes must be configured when attachments are enabled")
+        raise PreflightFailure(
+            "attachment_allowed_schemes must be configured when attachments are enabled"
+        )
 
 
 def _validate_gate_configuration(config: NodeRuntimeConfig) -> None:
