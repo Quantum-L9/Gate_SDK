@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from starlette.responses import Response
 
 from constellation_node_sdk.gate.registration import register_from_env
 from constellation_node_sdk.transport.packet import TransportPacket
@@ -39,7 +41,7 @@ def create_node_app(
     resolved_lifecycle = lifecycle_hook or NoOpLifecycle()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         configure_logging(resolved_config)
         run_preflight(resolved_config)
 
@@ -78,11 +80,11 @@ def create_node_app(
         }
 
     @app.get("/metrics")
-    async def metrics():
+    async def metrics() -> Response:
         return metrics_response()
 
     @app.post("/v1/execute")
-    async def execute(request: Request):
+    async def execute(request: Request) -> JSONResponse:
         packet: TransportPacket | None = None
         try:
             body = await request.json()
@@ -96,20 +98,27 @@ def create_node_app(
 
             packet = TransportPacket.model_validate(body)
 
-            response_signing_key, response_signing_algorithm = _key_material_from_config(resolved_config)
+            response_signing_key, response_signing_algorithm = _key_material_from_config(
+                resolved_config
+            )
 
             response_packet = await execute_transport_packet(
                 packet,
                 node_name=resolved_config.node_name,
-                signing_key=response_signing_key if response_signing_algorithm == "hmac-sha256" else None,
-                signing_private_key=response_signing_key if response_signing_algorithm == "ed25519" else None,
+                signing_key=response_signing_key
+                if response_signing_algorithm == "hmac-sha256"
+                else None,
+                signing_private_key=str(response_signing_key)
+                if response_signing_algorithm == "ed25519" and response_signing_key
+                else None,
                 signing_key_id=resolved_config.signing_key_id,
                 signing_algorithm=response_signing_algorithm,
                 verifying_keys=resolved_config.verifying_keys,
                 require_signature=resolved_config.require_signature,
                 allowed_actions=resolved_config.allowed_actions or None,
                 allowed_packet_types=resolved_config.allowed_packet_types or None,
-                required_idempotency_actions=resolved_config.require_idempotency_for_actions or None,
+                required_idempotency_actions=resolved_config.require_idempotency_for_actions
+                or None,
                 replay_enabled=resolved_config.replay_enabled,
                 dev_mode=resolved_config.dev_mode,
                 verify_hop_signatures=resolved_config.verify_hop_signatures,
@@ -129,13 +138,19 @@ def create_node_app(
 
         except Exception as exc:
             if packet is not None and resolved_config.return_transport_errors:
-                response_signing_key, response_signing_algorithm = _key_material_from_config(resolved_config)
+                response_signing_key, response_signing_algorithm = _key_material_from_config(
+                    resolved_config
+                )
                 failure_packet = create_error_transport_packet(
                     packet,
                     exc,
                     node_name=resolved_config.node_name,
-                    signing_key=response_signing_key if response_signing_algorithm == "hmac-sha256" else None,
-                    signing_private_key=response_signing_key if response_signing_algorithm == "ed25519" else None,
+                    signing_key=response_signing_key
+                    if response_signing_algorithm == "hmac-sha256"
+                    else None,
+                    signing_private_key=str(response_signing_key)
+                    if response_signing_algorithm == "ed25519" and response_signing_key
+                    else None,
                     signing_key_id=resolved_config.signing_key_id,
                     signing_algorithm=response_signing_algorithm,
                     expose_internal_errors=resolved_config.expose_internal_errors,

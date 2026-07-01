@@ -15,7 +15,10 @@ def _canonicalize(value: Any) -> Any:
     if isinstance(value, BaseModel):
         return _canonicalize(value.model_dump(mode="python", exclude_none=False))
     if isinstance(value, dict):
-        return {str(k): _canonicalize(v) for k, v in sorted(value.items(), key=lambda item: str(item[0]))}
+        return {
+            str(k): _canonicalize(v)
+            for k, v in sorted(value.items(), key=lambda item: str(item[0]))
+        }
     if isinstance(value, (list, tuple)):
         return [_canonicalize(v) for v in value]
     if isinstance(value, datetime):

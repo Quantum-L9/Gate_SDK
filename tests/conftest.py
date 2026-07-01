@@ -12,9 +12,8 @@ from constellation_node_sdk.gate.config import GateClientConfig
 from constellation_node_sdk.runtime.config import NodeRuntimeConfig, get_runtime_config
 from constellation_node_sdk.runtime.handlers import clear_handlers
 from constellation_node_sdk.security.signing import sign_transport_packet
-from constellation_node_sdk.transport.errors import TenantMutationError
 from constellation_node_sdk.transport.hop_trace import make_execution_hop, make_ingress_hop
-from constellation_node_sdk.transport.models import DelegationLink, TransportHop, utc_now
+from constellation_node_sdk.transport.models import DelegationLink
 from constellation_node_sdk.transport.packet import TransportPacket, create_transport_packet
 from constellation_node_sdk.transport.provenance import RoutingProvenance
 from constellation_node_sdk.transport.tenant import TenantContext
@@ -488,7 +487,10 @@ def restricted_packet(tenant: TenantContext) -> TransportPacket:
     - governance.audit_required=True
     - Passes restricted classification gate in validate_transport_packet() (§10)
     """
-    from constellation_node_sdk.transport.hashing import compute_payload_hash, compute_transport_hash
+    from constellation_node_sdk.transport.hashing import (
+        compute_payload_hash,
+        compute_transport_hash,
+    )
 
     pkt = create_transport_packet(
         action="test-action",

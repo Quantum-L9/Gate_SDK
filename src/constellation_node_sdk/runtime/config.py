@@ -104,7 +104,9 @@ class NodeRuntimeConfig(BaseModel):
     def validate_signing_algorithm(cls, value: str) -> str:
         normalized = value.strip().lower()
         if normalized not in _ALLOWED_SIGNING_ALGORITHMS:
-            raise ValueError(f"signing_algorithm must be one of {sorted(_ALLOWED_SIGNING_ALGORITHMS)}")
+            raise ValueError(
+                f"signing_algorithm must be one of {sorted(_ALLOWED_SIGNING_ALGORITHMS)}"
+            )
         return normalized
 
     @field_validator(
@@ -155,7 +157,7 @@ class NodeRuntimeConfig(BaseModel):
         return normalized
 
     @model_validator(mode="after")
-    def validate_security_profile(self) -> "NodeRuntimeConfig":
+    def validate_security_profile(self) -> NodeRuntimeConfig:
         if self.environment in {"staging", "prod"} and self.dev_mode:
             raise ValueError("dev_mode cannot be enabled in staging or prod")
 
@@ -177,7 +179,9 @@ class NodeRuntimeConfig(BaseModel):
             raise ValueError("max_attachment_size_bytes must not exceed max_packet_bytes")
 
         if self.max_attachments > 0 and not self.attachment_allowed_schemes:
-            raise ValueError("attachment_allowed_schemes must be configured when attachments are enabled")
+            raise ValueError(
+                "attachment_allowed_schemes must be configured when attachments are enabled"
+            )
 
         return self
 
@@ -211,7 +215,8 @@ def get_runtime_config() -> NodeRuntimeConfig:
         signing_key_id=os.getenv("L9_SIGNING_KEY_ID"),
         verifying_keys=_env_json_map("L9_VERIFYING_KEYS_JSON"),
         allowed_actions=_env_tuple("L9_ALLOWED_ACTIONS"),
-        allowed_packet_types=_env_tuple("L9_ALLOWED_PACKET_TYPES") or ("request", "command", "delegation", "replay_request"),
+        allowed_packet_types=_env_tuple("L9_ALLOWED_PACKET_TYPES")
+        or ("request", "command", "delegation", "replay_request"),
         require_idempotency_for_actions=_env_tuple("L9_REQUIRE_IDEMPOTENCY_FOR_ACTIONS"),
         allowed_clock_skew_seconds=int(os.getenv("L9_ALLOWED_CLOCK_SKEW_SECONDS", "30")),
         max_packet_bytes=int(os.getenv("L9_MAX_PACKET_BYTES", "262144")),

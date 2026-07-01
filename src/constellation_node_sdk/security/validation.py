@@ -87,7 +87,9 @@ def validate_transport_packet(
     if packet.header.schema_version != "1.0":
         raise SchemaVersionError(f"unsupported schema_version: {packet.header.schema_version}")
 
-    if allowed_packet_types is not None and packet.header.packet_type not in set(allowed_packet_types):
+    if allowed_packet_types is not None and packet.header.packet_type not in set(
+        allowed_packet_types
+    ):
         raise TransportAuthorizationError(f"packet_type not allowed: {packet.header.packet_type}")
 
     if allowed_actions is not None and packet.header.action not in set(allowed_actions):
@@ -145,7 +147,10 @@ def validate_transport_packet(
     if "GDPR" in packet.governance.compliance_tags and not packet.governance.data_subject_id:
         raise TransportValidationError("GDPR packets require data_subject_id")
 
-    if packet.security.classification == "restricted" and packet.governance.audit_required is not True:
+    if (
+        packet.security.classification == "restricted"
+        and packet.governance.audit_required is not True
+    ):
         raise TransportValidationError("restricted packets must set audit_required=true")
 
     _validate_delegation_chain(packet, now=current_time)
@@ -180,14 +185,20 @@ def _validate_delegation_chain(packet: TransportPacket, *, now: datetime) -> Non
 
         if index == len(packet.delegation_chain) - 1 and packet.header.packet_type == "delegation":
             if packet.header.action not in current_scope:
-                raise TransportAuthorizationError("delegated packet action not permitted by last delegation scope")
+                raise TransportAuthorizationError(
+                    "delegated packet action not permitted by last delegation scope"
+                )
             if packet.address.destination_node != link.delegatee:
-                raise TransportAuthorizationError("delegated packet destination does not match last delegation target")
+                raise TransportAuthorizationError(
+                    "delegated packet destination does not match last delegation target"
+                )
 
         previous_scope = current_scope
 
 
-def _validate_attachment_uri(uri: str, *, allowed_schemes: tuple[str, ...], allow_private_hosts: bool) -> None:
+def _validate_attachment_uri(
+    uri: str, *, allowed_schemes: tuple[str, ...], allow_private_hosts: bool
+) -> None:
     parsed = urlparse(uri)
     scheme = parsed.scheme.lower()
 
@@ -213,5 +224,7 @@ def _validate_attachment_uri(uri: str, *, allowed_schemes: tuple[str, ...], allo
     except ValueError:
         return
 
-    if not allow_private_hosts and (host_ip.is_private or host_ip.is_loopback or host_ip.is_link_local):
+    if not allow_private_hosts and (
+        host_ip.is_private or host_ip.is_loopback or host_ip.is_link_local
+    ):
         raise TransportValidationError("private attachment hosts are not allowed")

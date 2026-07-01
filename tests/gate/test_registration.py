@@ -44,10 +44,7 @@ def test_build_registration_payload_requires_node_id() -> None:
 def test_load_node_spec_reads_yaml(tmp_path) -> None:
     spec_path = tmp_path / "spec.yaml"
     spec_path.write_text(
-        "node:\n"
-        "  id: enrich\n"
-        "  actions:\n"
-        "    - enrich\n",
+        "node:\n  id: enrich\n  actions:\n    - enrich\n",
         encoding="utf-8",
     )
 

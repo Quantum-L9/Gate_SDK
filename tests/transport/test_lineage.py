@@ -61,5 +61,5 @@ def test_validate_parent_child_lineage_rejects_invalid_child() -> None:
         reply_to="orchestrator",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises((ValueError, Exception)):
         validate_parent_child_lineage(parent, child)

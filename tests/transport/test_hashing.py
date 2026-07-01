@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from constellation_node_sdk.transport.hashing import canonical_json, compute_payload_hash, compute_transport_hash
+from constellation_node_sdk.transport.hashing import (
+    canonical_json,
+    compute_payload_hash,
+    compute_transport_hash,
+)
 from constellation_node_sdk.transport.packet import create_transport_packet
 
 
