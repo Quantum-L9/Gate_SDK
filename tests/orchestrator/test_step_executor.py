@@ -107,7 +107,9 @@ async def test_step_executor_raises_after_retry_exhaustion() -> None:
             parent=parent,
             action="score",
             payload={"entity_id": "42"},
-            retry_policy=RetryPolicy(max_attempts=2, initial_delay_seconds=0.0, max_delay_seconds=0.0),
+            retry_policy=RetryPolicy(
+                max_attempts=2, initial_delay_seconds=0.0, max_delay_seconds=0.0
+            ),
         )
 
 
@@ -144,5 +146,7 @@ async def test_step_executor_raises_on_failure_packet() -> None:
             parent=parent,
             action="score",
             payload={"entity_id": "42"},
-            retry_policy=RetryPolicy(max_attempts=1, initial_delay_seconds=0.0, max_delay_seconds=0.0),
+            retry_policy=RetryPolicy(
+                max_attempts=1, initial_delay_seconds=0.0, max_delay_seconds=0.0
+            ),
         )

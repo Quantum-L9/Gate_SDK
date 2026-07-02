@@ -34,7 +34,7 @@ class OrchestratorState(BaseModel):
         packet: TransportPacket,
         orchestrator_node: str,
         workflow_name: str | None = None,
-    ) -> "OrchestratorState":
+    ) -> OrchestratorState:
         return cls(
             root_id=packet.lineage.root_id,
             current_packet_id=packet.header.packet_id,
@@ -53,7 +53,7 @@ class OrchestratorState(BaseModel):
         step_name: str,
         response_packet: TransportPacket,
         merged_payload: dict[str, Any],
-    ) -> "OrchestratorState":
+    ) -> OrchestratorState:
         response_snapshot = {
             "step_name": step_name.strip().lower(),
             "packet_id": str(response_packet.header.packet_id),
@@ -70,7 +70,7 @@ class OrchestratorState(BaseModel):
             }
         )
 
-    def with_step_failure(self, *, step_name: str) -> "OrchestratorState":
+    def with_step_failure(self, *, step_name: str) -> OrchestratorState:
         return self.model_copy(
             update={
                 "failed_steps": self.failed_steps + (step_name.strip().lower(),),

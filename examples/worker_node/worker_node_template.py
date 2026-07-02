@@ -11,6 +11,7 @@ Acceptance gates:
   python -c "import examples.worker_node.worker_node_template"
   grep -n 'destination_node' examples/worker_node/worker_node_template.py | grep gate
 """
+
 from __future__ import annotations
 
 import logging

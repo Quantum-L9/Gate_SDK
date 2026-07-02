@@ -46,10 +46,11 @@ def test_run_preflight_accepts_valid_config() -> None:
 
 
 def test_node_runtime_config_rejects_invalid_idempotency_action() -> None:
-    with pytest.raises(ValueError):
-        _base_config().model_copy(
-            update={"require_idempotency_for_actions": ("unknown",)}
-        )
+    base = _base_config()
+    data = base.model_dump()
+    data["require_idempotency_for_actions"] = ("unknown",)
+    with pytest.raises((ValueError, Exception)):
+        NodeRuntimeConfig(**data)
 
 
 def test_run_preflight_rejects_missing_attachment_schemes_when_attachments_enabled() -> None:

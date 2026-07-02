@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import NoReturn
 
 from fastapi import HTTPException
 
@@ -96,7 +97,7 @@ def classify_exception(exc: Exception) -> RuntimeErrorDetail:
     )
 
 
-def raise_http_exception(exc: Exception) -> None:
+def raise_http_exception(exc: Exception) -> NoReturn:
     """
     Raise a FastAPI HTTPException from a classified runtime exception.
     """

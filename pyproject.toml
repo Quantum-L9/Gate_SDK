@@ -29,6 +29,8 @@ dev = [
   "pytest>=8.3.0",
   "pytest-asyncio>=0.23.8",
   "ruff>=0.6.0",
+  "types-PyYAML",
+  "types-requests",
 ]
 
 [tool.setuptools]

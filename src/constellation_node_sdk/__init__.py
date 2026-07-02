@@ -17,8 +17,8 @@ from constellation_node_sdk.gate import (
 )
 from constellation_node_sdk.runtime import (
     LifecycleHook,
-    NoOpLifecycle,
     NodeRuntimeConfig,
+    NoOpLifecycle,
     PreflightFailure,
     clear_handlers,
     create_error_transport_packet,

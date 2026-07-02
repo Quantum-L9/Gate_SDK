@@ -1,11 +1,11 @@
 # LOAD_PACK__REGISTRY.md
 
-**Version:** 1.0.0  
+**Version:** 1.0.0
 **Authority:** This file is the sole activation index for all AI agent load packs across the
 L9 system. It governs pack selection, load order, conflict resolution, and combined-session
 composition. Agents MUST consult this file before loading any pack.
 
-**Authority order for conflicts:** AGENT_LOAD_PACK > User_Preferences > domain packs  
+**Authority order for conflicts:** AGENT_LOAD_PACK > User_Preferences > domain packs
 **Load order within a session:** resolve registry first → load base packs → load domain packs
 
 ---
