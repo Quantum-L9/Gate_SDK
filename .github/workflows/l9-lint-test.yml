@@ -1,0 +1,137 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# L9 consumer lint + test workflow (adopted from Quantum-L9/l9-ci-core
+# docs/templates/l9-lint-test.yml).
+#
+# This is the Core-provided generic Python CI-hygiene template. l9-ci-core v2
+# is a thin control plane and deliberately ships lint/test as a copy-paste
+# consumer template rather than a callable workflow, because generic
+# ruff/mypy/pytest is owned by the consuming repo, not Core.
+#
+# NOTE: this overlaps this repo's native ci.yml (gate-1-lint-typecheck,
+# gate-4-test) and coverage.yml. It is included to fully instantiate the
+# l9-ci-core consumer surface; ci.yml remains the merge-blocking source of
+# truth. If the duplication is unwanted, drop this file — the native gates
+# already cover lint/type/test.
+#
+# v2 conventions preserved: immutable event-revision checkout (no floating
+# action ref), external actions pinned to full commit SHAs, least-privilege
+# permissions (contents: read only).
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: l9-lint-test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+# ── Consumer config: edit these values for your repo ───────────────────────────
+env:
+  PYTHON_VERSION: "3.12"
+  SOURCE_DIR: "src"
+  TEST_DIR: "tests/"
+  # Fail the build below this line coverage percentage. 0 = advisory (no gate).
+  COVERAGE_THRESHOLD: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: l9-lint-test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable event revision
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin \
+            "https://x-access-token:${TOKEN}@github.com/${REPOSITORY}.git"
+          git -c protocol.version=2 fetch --depth=1 origin "${REVISION}"
+          git checkout --detach FETCH_HEAD
+          git remote set-url origin "https://github.com/${REPOSITORY}.git"
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install lint tools
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          if [ -f requirements-ci.txt ]; then pip install -r requirements-ci.txt; fi
+          pip install -e ".[dev]" || pip install -e . || \
+            echo "::notice::no local editable package to install"
+          command -v ruff >/dev/null 2>&1 || pip install ruff
+          command -v mypy >/dev/null 2>&1 || pip install mypy
+      - name: ruff check
+        run: ruff check . --output-format=github
+      - name: ruff format --check
+        run: ruff format --check .
+      - name: mypy
+        run: |
+          mypy "${SOURCE_DIR}" \
+            --show-error-codes --pretty \
+            --install-types --non-interactive --ignore-missing-imports
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable event revision
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin \
+            "https://x-access-token:${TOKEN}@github.com/${REPOSITORY}.git"
+          git -c protocol.version=2 fetch --depth=1 origin "${REVISION}"
+          git checkout --detach FETCH_HEAD
+          git remote set-url origin "https://github.com/${REPOSITORY}.git"
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install test tools
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          if [ -f requirements-ci.txt ]; then pip install -r requirements-ci.txt; fi
+          pip install -e ".[dev]" || pip install -e . || \
+            echo "::notice::no local editable package to install"
+          command -v pytest >/dev/null 2>&1 || pip install pytest
+          python -c "import pytest_cov" 2>/dev/null || pip install pytest-cov
+          python -c "import xdist" 2>/dev/null || pip install pytest-xdist
+          python -c "import pytest_timeout" 2>/dev/null || pip install pytest-timeout
+      - name: pytest with coverage
+        env:
+          TESTING: "true"
+          L9_ENVIRONMENT: "test"
+          L9_DEV_MODE: "false"
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. pytest "${TEST_DIR}" \
+            -n auto \
+            --cov="${SOURCE_DIR}" \
+            --cov-report=xml --cov-report=term-missing \
+            --cov-fail-under="${COVERAGE_THRESHOLD}" \
+            --timeout=300 --tb=short -v

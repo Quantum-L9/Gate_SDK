@@ -1,20 +1,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# L9 Analysis — pull-request (pr_fast profile)
+# L9 Analysis — nightly (nightly profile)
 #
 # Thin wrapper around the shared engine (_l9-analysis.yml). Runs the governed
-# Semgrep pipeline on every pull request under the pr_fast governance profile
-# (see .github/governance/execution-profiles.yaml). The engine resolves
-# governance, runs semgrep, normalizes/validates/routes findings through the
-# pinned l9-ci-sdk, and publishes the result as a GitHub check via Core's
-# publish-analysis.yml reusable workflow.
+# Semgrep pipeline on a daily schedule under the nightly governance profile
+# (ci_deep, advisory by default — see .github/governance/execution-profiles.yaml).
 #
-# Triggers match pr_fast's allowed_events: pull_request + workflow_dispatch.
+# Triggers match nightly's allowed_events: schedule + workflow_dispatch.
 # ─────────────────────────────────────────────────────────────────────────────
 
-name: l9-analysis
+name: l9-analysis-nightly
 
 on:
-  pull_request:
+  schedule:
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -23,17 +21,17 @@ permissions:
   checks: write
 
 concurrency:
-  group: l9-analysis-${{ github.workflow }}-${{ github.ref }}
+  group: l9-analysis-nightly-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   analysis:
-    name: L9 analysis (pr_fast)
+    name: L9 analysis (nightly)
     permissions:
       contents: read
       actions: read
       checks: write
     uses: ./.github/workflows/_l9-analysis.yml
     with:
-      profile: pr_fast
-      matrix-id: pr-semgrep
+      profile: nightly
+      matrix-id: nightly-semgrep

@@ -105,9 +105,26 @@ tests/ — unit and integration coverage
 
 CI
 
-`.github/workflows/ci.yml` runs lint, type-check, contract validation, schema-drift check, tests, dependency audit, secret scan, and build on every pull request.
+Native gates:
 
-`.github/workflows/l9-analysis.yml` wires this repo into the org-wide L9 CI control plane ([Quantum-L9/l9-ci-core](https://github.com/Quantum-L9/l9-ci-core)): it runs a governed Semgrep scan, normalizes and validates the findings through the pinned `l9-ci-sdk`, and publishes the result as a GitHub check via Core's `publish-analysis.yml` reusable workflow. See `.github/governance/README.md` for how the governance profile is resolved.
+`.github/workflows/ci.yml` runs lint, type-check, contract validation, schema-drift check, tests, dependency audit, secret scan, and build on every pull request. `coverage.yml`, `integration.yml`, `nightly.yml`, `pre-commit-ci.yml`, `release.yml`, and `release-publish.yml` cover coverage, integration, nightly regression, pre-commit enforcement, and release/publish.
+
+L9 CI control plane ([Quantum-L9/l9-ci-core](https://github.com/Quantum-L9/l9-ci-core)):
+
+This repo fully instantiates the l9-ci-core consumer surface. A shared reusable engine, `.github/workflows/_l9-analysis.yml`, runs a governed Semgrep scan, normalizes/validates the findings through the pinned `l9-ci-sdk` using Core's SHA-pinned composite actions, and publishes the result as a GitHub check via Core's `publish-analysis.yml` reusable workflow. Five thin wrappers drive it, one per governance profile:
+
+- `l9-analysis.yml` — `pr_fast`, on pull requests
+- `l9-analysis-merge.yml` — `merge`, on push to `main`/`master`
+- `l9-analysis-nightly.yml` — `nightly`, daily schedule
+- `l9-analysis-release.yml` — `release`, on `v*` tags
+- `l9-analysis-supply-chain.yml` — `supply_chain`, weekly schedule
+
+Two more workflows exercise the rest of Core's consumer primitives:
+
+- `l9-governance-validate.yml` — validates `.github/governance/` via Core's `validate-governance` action
+- `l9-sdk-contract-check.yml` — provisions and verifies the pinned `l9-ci-sdk` CLI contract via Core's `provision-sdk` action
+
+`l9-lint-test.yml` adopts Core's generic Python lint/test consumer template (overlaps the native `ci.yml`; `ci.yml` remains the merge-blocking source of truth). See `.github/governance/README.md` for how a governance profile is resolved and which events each profile allows.
 
 Status
 This repo is intended to be:

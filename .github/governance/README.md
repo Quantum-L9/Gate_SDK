@@ -33,13 +33,24 @@ files.
   expiration date, and explicit scope; expired or malformed waivers fail
   validation.
 
-## Currently wired profile
+## Wired profiles
 
-Only `pr_fast` (triggered on `pull_request` / `workflow_dispatch`) is wired
-up in `l9-analysis.yml` today. The other profiles are defined here so they
-can be adopted incrementally (e.g. a `merge` run on push to `main`, or a
-`nightly`/`release`/`supply_chain` run) without further governance-file
-changes — only a new workflow job needs to reference them.
+All five profiles are wired to profile-scoped workflows, each of which calls
+the shared reusable engine `.github/workflows/_l9-analysis.yml` with the
+matching profile and a distinct `matrix-id`. Every trigger matches the
+profile's `allowed_events` above:
+
+| Profile | Workflow | Trigger |
+|---|---|---|
+| `pr_fast` | `.github/workflows/l9-analysis.yml` | `pull_request`, `workflow_dispatch` |
+| `merge` | `.github/workflows/l9-analysis-merge.yml` | `push` to `main`/`master`, `workflow_dispatch` |
+| `nightly` | `.github/workflows/l9-analysis-nightly.yml` | daily `schedule`, `workflow_dispatch` |
+| `release` | `.github/workflows/l9-analysis-release.yml` | `push` of a `v*` tag, `workflow_dispatch` |
+| `supply_chain` | `.github/workflows/l9-analysis-supply-chain.yml` | weekly `schedule`, `workflow_dispatch` |
+
+The pack itself is validated in CI by `.github/workflows/l9-governance-validate.yml`,
+which runs Core's `validate-governance` action against every profile/provider
+combination whenever these files change.
 
 ## Do not
 

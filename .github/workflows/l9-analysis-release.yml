@@ -1,20 +1,21 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# L9 Analysis — pull-request (pr_fast profile)
+# L9 Analysis — release (release profile)
 #
 # Thin wrapper around the shared engine (_l9-analysis.yml). Runs the governed
-# Semgrep pipeline on every pull request under the pr_fast governance profile
-# (see .github/governance/execution-profiles.yaml). The engine resolves
-# governance, runs semgrep, normalizes/validates/routes findings through the
-# pinned l9-ci-sdk, and publishes the result as a GitHub check via Core's
-# publish-analysis.yml reusable workflow.
+# Semgrep pipeline on release tag pushes under the release governance profile
+# (ci_deep, blocking — see .github/governance/execution-profiles.yaml).
 #
-# Triggers match pr_fast's allowed_events: pull_request + workflow_dispatch.
+# Triggers match release's allowed_events: push (tags) + workflow_dispatch.
+# A tag push is a `push` event, which the resolver accepts for this profile.
 # ─────────────────────────────────────────────────────────────────────────────
 
-name: l9-analysis
+name: l9-analysis-release
 
 on:
-  pull_request:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
   workflow_dispatch:
 
 permissions:
@@ -23,17 +24,17 @@ permissions:
   checks: write
 
 concurrency:
-  group: l9-analysis-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: l9-analysis-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   analysis:
-    name: L9 analysis (pr_fast)
+    name: L9 analysis (release)
     permissions:
       contents: read
       actions: read
       checks: write
     uses: ./.github/workflows/_l9-analysis.yml
     with:
-      profile: pr_fast
-      matrix-id: pr-semgrep
+      profile: release
+      matrix-id: release-semgrep
