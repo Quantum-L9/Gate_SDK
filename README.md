@@ -101,6 +101,14 @@ examples/ — runnable worker and orchestrator examples
 
 tests/ — unit and integration coverage
 
+.github/governance/ — CI governance instantiation pack for the L9 analysis pipeline
+
+CI
+
+`.github/workflows/ci.yml` runs lint, type-check, contract validation, schema-drift check, tests, dependency audit, secret scan, and build on every pull request.
+
+`.github/workflows/l9-analysis.yml` wires this repo into the org-wide L9 CI control plane ([Quantum-L9/l9-ci-core](https://github.com/Quantum-L9/l9-ci-core)): it runs a governed Semgrep scan, normalizes and validates the findings through the pinned `l9-ci-sdk`, and publishes the result as a GitHub check via Core's `publish-analysis.yml` reusable workflow. See `.github/governance/README.md` for how the governance profile is resolved.
+
 Status
 This repo is intended to be:
 
