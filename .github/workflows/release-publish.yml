@@ -153,7 +153,12 @@ jobs:
           python -m pip install pip-audit
 
       - name: pip-audit (release gate)
-        run: pip-audit --strict
+        # --skip-editable: the release candidate itself is installed editable
+        # (pip install -e ".[dev]") and is never on PyPI *before* this pipeline
+        # publishes it, so pip-audit cannot resolve it for audit. Skipping the
+        # editable install audits only third-party dependencies, which is the
+        # actual intent of this gate.
+        run: pip-audit --strict --skip-editable
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GATE 4 — Build release artifacts
