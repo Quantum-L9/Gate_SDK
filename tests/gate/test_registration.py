@@ -5,12 +5,7 @@ import asyncio
 import httpx
 import pytest
 
-from constellation_node_sdk.gate.registration import (
-    build_registration_payload,
-    load_node_spec,
-    register_from_env,
-    register_with_gate,
-)
+import constellation_node_sdk.gate.registration as registration_module
 
 
 class _RecordingTransport(httpx.AsyncBaseTransport):
@@ -31,8 +26,6 @@ class _RecordingTransport(httpx.AsyncBaseTransport):
 def _patch_async_client(
     monkeypatch: pytest.MonkeyPatch, transport: httpx.AsyncBaseTransport
 ) -> None:
-    import constellation_node_sdk.gate.registration as registration_module
-
     original_async_client = httpx.AsyncClient
 
     class PatchedAsyncClient(httpx.AsyncClient):
@@ -68,7 +61,7 @@ def test_build_registration_payload_from_valid_spec() -> None:
         }
     }
 
-    payload = build_registration_payload(spec)
+    payload = registration_module.build_registration_payload(spec)
 
     assert "score" in payload
     node = payload["score"]
@@ -83,7 +76,7 @@ def test_build_registration_payload_from_valid_spec() -> None:
 
 def test_build_registration_payload_requires_node_id() -> None:
     with pytest.raises(ValueError):
-        build_registration_payload({"node": {"actions": ["score"]}})
+        registration_module.build_registration_payload({"node": {"actions": ["score"]}})
 
 
 def test_load_node_spec_reads_yaml(tmp_path) -> None:
@@ -93,7 +86,7 @@ def test_load_node_spec_reads_yaml(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    spec = load_node_spec(str(spec_path))
+    spec = registration_module.load_node_spec(str(spec_path))
     assert spec["node"]["id"] == "enrich"
 
 
@@ -101,7 +94,9 @@ def test_load_node_spec_reads_yaml(tmp_path) -> None:
 async def test_register_with_gate_returns_false_when_spec_file_missing(tmp_path) -> None:
     missing_path = str(tmp_path / "does-not-exist.yaml")
 
-    result = await register_with_gate(gate_url="https://gate:8000", spec_path=missing_path)
+    result = await registration_module.register_with_gate(
+        gate_url="https://gate:8000", spec_path=missing_path
+    )
 
     assert result is False
 
@@ -111,7 +106,9 @@ async def test_register_with_gate_returns_false_when_spec_invalid(tmp_path) -> N
     spec_path = tmp_path / "spec.yaml"
     spec_path.write_text("node:\n  actions:\n    - score\n", encoding="utf-8")
 
-    result = await register_with_gate(gate_url="https://gate:8000", spec_path=str(spec_path))
+    result = await registration_module.register_with_gate(
+        gate_url="https://gate:8000", spec_path=str(spec_path)
+    )
 
     assert result is False
 
@@ -126,7 +123,7 @@ async def test_register_with_gate_returns_true_on_200(
     )
     _patch_async_client(monkeypatch, transport)
 
-    result = await register_with_gate(
+    result = await registration_module.register_with_gate(
         gate_url="https://gate:8000",
         admin_token="secret-token",
         spec_path=spec_path,
@@ -147,7 +144,9 @@ async def test_register_with_gate_returns_false_on_rejection_status(
     transport = _RecordingTransport([httpx.Response(status_code=status_code)])
     _patch_async_client(monkeypatch, transport)
 
-    result = await register_with_gate(gate_url="https://gate:8000", spec_path=spec_path, retries=3)
+    result = await registration_module.register_with_gate(
+        gate_url="https://gate:8000", spec_path=spec_path, retries=3
+    )
 
     assert result is False
     # Rejection statuses are terminal — no retry should be attempted.
@@ -174,7 +173,9 @@ async def test_register_with_gate_retries_after_transport_error_then_succeeds(
 
     monkeypatch.setattr(asyncio, "sleep", _fast_sleep)
 
-    result = await register_with_gate(gate_url="https://gate:8000", spec_path=spec_path, retries=2)
+    result = await registration_module.register_with_gate(
+        gate_url="https://gate:8000", spec_path=spec_path, retries=2
+    )
 
     assert result is True
     assert len(transport.requests) == 2
@@ -200,7 +201,9 @@ async def test_register_with_gate_returns_false_after_retry_exhaustion(
 
     monkeypatch.setattr(asyncio, "sleep", _fast_sleep)
 
-    result = await register_with_gate(gate_url="https://gate:8000", spec_path=spec_path, retries=2)
+    result = await registration_module.register_with_gate(
+        gate_url="https://gate:8000", spec_path=spec_path, retries=2
+    )
 
     assert result is False
     assert len(transport.requests) == 2
@@ -213,7 +216,7 @@ async def test_register_from_env_returns_false_when_registration_disabled(
     monkeypatch.setenv("GATE_URL", "https://gate:8000")
     monkeypatch.setenv("GATE_REGISTRATION_ENABLED", "false")
 
-    result = await register_from_env()
+    result = await registration_module.register_from_env()
 
     assert result is False
 
@@ -233,7 +236,7 @@ async def test_register_from_env_delegates_to_register_with_gate(
     monkeypatch.setenv("GATE_NODE_SPEC_PATH", spec_path)
     monkeypatch.setenv("GATE_REGISTER_RETRIES", "1")
 
-    result = await register_from_env()
+    result = await registration_module.register_from_env()
 
     assert result is True
     assert len(transport.requests) == 1
