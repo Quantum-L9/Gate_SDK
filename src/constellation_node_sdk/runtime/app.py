@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
@@ -28,13 +28,6 @@ def _key_material_from_config(config: NodeRuntimeConfig) -> tuple[bytes | str | 
     return None, None
 
 
-async def _parse_transport_packet(request: Request) -> TransportPacket:
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise ValueError("request body must be a JSON object")
-    return TransportPacket.model_validate(body)
-
-
 def _resolve_route_validation(
     *,
     route_mode: Literal["execute", "relay"],
@@ -48,8 +41,14 @@ def _resolve_route_validation(
             "verify_hop_signatures": resolved_config.relay_verify_hop_signatures
             if resolved_config.relay_verify_hop_signatures is not None
             else resolved_config.verify_hop_signatures,
-            "allowed_actions": resolved_config.relay_allowed_actions or None,
-            "allowed_packet_types": resolved_config.relay_allowed_packet_types or None,
+            "allowed_actions": (
+                resolved_config.relay_allowed_actions or resolved_config.allowed_actions or None
+            ),
+            "allowed_packet_types": (
+                resolved_config.relay_allowed_packet_types
+                or resolved_config.allowed_packet_types
+                or None
+            ),
         }
     return {
         "require_signature": resolved_config.execute_require_signature
@@ -78,7 +77,15 @@ async def _handle_transport_request(
 ) -> JSONResponse:
     packet: TransportPacket | None = None
     try:
-        packet = await _parse_transport_packet(request)
+        body = await request.json()
+    except Exception as exc:
+        record_request(config=resolved_config, action="unknown", status="invalid_json")
+        raise HTTPException(status_code=400, detail=f"invalid JSON body: {exc}") from exc
+
+    try:
+        if not isinstance(body, dict):
+            raise ValueError("request body must be a JSON object")
+        packet = TransportPacket.model_validate(body)
         if resolved_config.enforce_gate_only_ingress:
             validate_ingress(packet)
 
@@ -93,7 +100,6 @@ async def _handle_transport_request(
 
         response_packet = await execute_transport_packet(
             packet,
-            execution_mode=execution_mode,
             node_name=resolved_config.node_name,
             signing_key=(
                 response_signing_key if response_signing_algorithm == "hmac-sha256" else None
@@ -246,8 +252,16 @@ def create_node_app(
                     local_node=resolved_config.node_name,
                     gate_node_name=resolved_config.gate_node_name,
                     require_route_kind=resolved_config.require_gate_mediation_provenance,
-                    allowed_actions=resolved_config.relay_allowed_actions or None,
-                    allowed_packet_types=resolved_config.relay_allowed_packet_types or None,
+                    allowed_actions=(
+                        resolved_config.relay_allowed_actions
+                        or resolved_config.allowed_actions
+                        or None
+                    ),
+                    allowed_packet_types=(
+                        resolved_config.relay_allowed_packet_types
+                        or resolved_config.allowed_packet_types
+                        or None
+                    ),
                 )
 
             return await _handle_transport_request(

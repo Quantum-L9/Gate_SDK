@@ -66,7 +66,6 @@ def _extract_payload(result: object) -> dict[str, object]:
 async def execute_transport_packet(
     packet: TransportPacket,
     *,
-    execution_mode: str = "execute",
     node_name: str,
     signing_key: bytes | str | None = None,
     signing_private_key: str | None = None,

@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # 1. Handler registration
 # ---------------------------------------------------------------------------
-# action name MUST match regex ^[a-z0-9][a-z0-9-]{0,63}$ — models.py §9
+# action name MUST match regex ^[a-z0-9][a-z0-9._-]{0,63}$ — models.py §9
 # 3-param signature: (org_id: str, payload: dict, packet: TransportPacket)
 # Handler MUST return dict or TransportPacket — runtime/execution.py §7
 

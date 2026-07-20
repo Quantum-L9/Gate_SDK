@@ -195,7 +195,8 @@ class NodeRuntimeConfig(BaseModel):
         if self.signing_algorithm == "ed25519" and self.signing_key is not None:
             raise ValueError("signing_key must not be used with ed25519")
 
-        invalid_idempotency = set(self.require_idempotency_for_actions) - set(self.allowed_actions)
+        known_actions = set(self.allowed_actions) | set(self.execute_allowed_actions)
+        invalid_idempotency = set(self.require_idempotency_for_actions) - known_actions
         if invalid_idempotency:
             invalid = ", ".join(sorted(invalid_idempotency))
             raise ValueError(f"require_idempotency_for_actions contains unknown actions: {invalid}")
