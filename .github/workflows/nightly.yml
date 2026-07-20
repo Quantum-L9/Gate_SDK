@@ -47,6 +47,8 @@ jobs:
   multi-version-matrix:
     name: "compat-matrix (Python ${{ matrix.python-version }})"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -57,9 +59,11 @@ jobs:
       L9_ENVIRONMENT: "test"
       L9_DEV_MODE: "false"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -86,14 +90,18 @@ jobs:
     # display label needs manual sync when the threshold changes.
     name: "coverage-gate (>= 80%)"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 20
     env:
       L9_ENVIRONMENT: "test"
       L9_DEV_MODE: "false"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -114,7 +122,7 @@ jobs:
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: coverage-html-${{ github.run_id }}
           path: coverage-html/
@@ -126,14 +134,18 @@ jobs:
   full-integration:
     name: full-integration-suite
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 30
     env:
       L9_ENVIRONMENT: "test"
       L9_DEV_MODE: "false"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -161,11 +173,15 @@ jobs:
   import-smoke:
     name: import-smoke (clean install)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -191,9 +207,13 @@ jobs:
   contract-spec-lint:
     name: contract-spec-lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Check NODE_REGISTRATION_SPEC.md required sections
         run: |
@@ -245,11 +265,15 @@ jobs:
   nightly-dep-audit:
     name: nightly-dep-audit (strict)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -277,6 +301,7 @@ jobs:
       - nightly-dep-audit
     if: always()
     runs-on: ubuntu-latest
+    permissions: {}
     timeout-minutes: 2
     steps:
       - name: Build nightly summary

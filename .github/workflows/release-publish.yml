@@ -34,10 +34,6 @@ concurrency:
   group: release-publish-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  id-token: write
-
 defaults:
   run:
     shell: bash
@@ -52,11 +48,15 @@ jobs:
   verify-tag:
     name: gate-1-tag-version-check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     outputs:
       version: ${{ steps.extract.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Extract tag version
         id: extract
@@ -67,6 +67,8 @@ jobs:
           echo "Tag: ${TAG} → Version: ${VERSION}"
 
       - name: Verify version matches pyproject.toml
+        env:
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
           TOML_VERSION=$(python - <<'PY'
           import re, pathlib
@@ -75,7 +77,6 @@ jobs:
           print(m.group(1) if m else "NOT_FOUND")
           PY
           )
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
           echo "pyproject.toml version: ${TOML_VERSION}"
           echo "Tag version:            ${TAG_VERSION}"
           if [[ "${TOML_VERSION}" != "${TAG_VERSION}" && "${{ github.event_name }}" != "workflow_dispatch" ]]; then
@@ -90,17 +91,20 @@ jobs:
     name: gate-2-quality
     needs: verify-tag
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 20
     env:
       L9_ENVIRONMENT: "test"
       L9_DEV_MODE: "false"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
 
       - name: Install dev dependencies
         run: |
@@ -137,14 +141,17 @@ jobs:
     name: gate-3-dep-audit
     needs: quality-gate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
 
       - name: Install package + audit tool
         run: |
@@ -170,14 +177,17 @@ jobs:
     name: gate-4-build
     needs: [dep-audit, verify-tag]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
 
       - name: Install build toolchain
         run: python -m pip install --upgrade pip setuptools wheel build
@@ -192,7 +202,7 @@ jobs:
           twine check dist/*
 
       - name: Upload dist artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-dist-${{ needs.verify-tag.outputs.version }}
           path: dist/*
@@ -205,14 +215,17 @@ jobs:
     name: gate-5-sbom
     needs: [build, verify-tag]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
 
       - name: Install package + CycloneDX tool
         run: |
@@ -221,13 +234,15 @@ jobs:
           python -m pip install cyclonedx-bom
 
       - name: Generate SBOM
+        env:
+          RELEASE_VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |
           cyclonedx-py environment \
             --output-format json \
-            --output-file sbom-${{ needs.verify-tag.outputs.version }}.cdx.json
+            --output-file "sbom-${RELEASE_VERSION}.cdx.json"
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: sbom-${{ needs.verify-tag.outputs.version }}
           path: sbom-${{ needs.verify-tag.outputs.version }}.cdx.json
@@ -244,15 +259,17 @@ jobs:
     timeout-minutes: 10
     environment: pypi-release
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false) }}
+    permissions:
+      id-token: write
     steps:
       - name: Download dist artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-dist-${{ needs.verify-tag.outputs.version }}
           path: dist/
 
       - name: Publish to PyPI (Trusted Publisher / OIDC)
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
         with:
           print-hash: true
           verbose: true
@@ -270,25 +287,28 @@ jobs:
       (needs.publish.result == 'success' || needs.publish.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Download dist artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-dist-${{ needs.verify-tag.outputs.version }}
           path: dist/
 
       - name: Download SBOM
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: sbom-${{ needs.verify-tag.outputs.version }}
           path: sbom/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           name: "v${{ needs.verify-tag.outputs.version }}"
           generate_release_notes: true
@@ -306,6 +326,7 @@ jobs:
     needs: [verify-tag, quality-gate, dep-audit, build, sbom, publish, gh-release]
     if: always()
     runs-on: ubuntu-latest
+    permissions: {}
     timeout-minutes: 2
     steps:
       - name: Evaluate release gates
