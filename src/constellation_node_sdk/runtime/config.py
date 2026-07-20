@@ -93,7 +93,9 @@ class NodeRuntimeConfig(BaseModel):
     )
 
     gate_url: str | None = None
-    host: str = "0.0.0.0"
+    # Default to loopback — containers must set HOST=0.0.0.0 explicitly via env var.
+    # This prevents accidental public binding on bare-metal or dev environments.
+    host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
 
     @field_validator(
@@ -298,6 +300,8 @@ def get_runtime_config() -> NodeRuntimeConfig:
             or ("request", "command", "delegation", "replay_request")
         ),
         gate_url=os.getenv("GATE_URL"),
-        host=os.getenv("HOST", "0.0.0.0"),
+        # HOST env var overrides the safe 127.0.0.1 default.
+        # In containers set HOST=0.0.0.0. On bare metal leave unset.
+        host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "8000")),
     )

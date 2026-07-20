@@ -1,26 +1,24 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=75.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "constellation-node-sdk"
-version = "1.0.0"
-description = "Canonical TransportPacket SDK for Constellation worker and orchestrator nodes"
+version = "1.0.1"
+description = "L9 Constellation Node SDK — TransportPacket runtime, Gate client, and node factory"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
-authors = [
-  { name = "OpenAI" }
-]
+
 dependencies = [
-  "cryptography>=42.0.0",
   "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "pydantic>=2.9.0",
   "httpx>=0.27.0",
-  "prometheus-client>=0.20.0",
-  "pydantic>=2.8.0",
-  "python-json-logger>=2.0.7",
+  "cryptography>=43.0.0",
+  "prometheus-client>=0.21.0",
+  "python-json-logger>=3.2.0",
   "pyyaml>=6.0.2",
-  "starlette>=0.37.2",
 ]
 
 [project.optional-dependencies]
@@ -29,38 +27,30 @@ dev = [
   "pytest>=8.3.0",
   "pytest-asyncio>=0.23.8",
   "ruff>=0.6.0",
-  "types-PyYAML",
+  "types-PyYAML>=6.0.12",
   "types-requests",
 ]
 
 [tool.setuptools]
-package-dir = { "" = "src" }
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-constellation_node_sdk = ["py.typed"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = [
-  "E",
-  "F",
-  "I",
-  "UP",
-  "B",
-]
+select = ["E", "F", "B", "I", "UP"]
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "src"
-packages = ["constellation_node_sdk"]
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
