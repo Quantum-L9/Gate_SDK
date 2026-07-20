@@ -28,9 +28,6 @@ on:
         type: string
         default: '["3.12", "3.13"]'
 
-permissions:
-  contents: read
-
 concurrency:
   group: nightly-${{ github.ref }}
   cancel-in-progress: true
@@ -50,6 +47,8 @@ jobs:
   multi-version-matrix:
     name: "compat-matrix (Python ${{ matrix.python-version }})"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -91,6 +90,8 @@ jobs:
     # display label needs manual sync when the threshold changes.
     name: "coverage-gate (>= 80%)"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 20
     env:
       L9_ENVIRONMENT: "test"
@@ -133,6 +134,8 @@ jobs:
   full-integration:
     name: full-integration-suite
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 30
     env:
       L9_ENVIRONMENT: "test"
@@ -170,6 +173,8 @@ jobs:
   import-smoke:
     name: import-smoke (clean install)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -202,6 +207,8 @@ jobs:
   contract-spec-lint:
     name: contract-spec-lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -258,6 +265,8 @@ jobs:
   nightly-dep-audit:
     name: nightly-dep-audit (strict)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -292,6 +301,7 @@ jobs:
       - nightly-dep-audit
     if: always()
     runs-on: ubuntu-latest
+    permissions: {}
     timeout-minutes: 2
     steps:
       - name: Build nightly summary

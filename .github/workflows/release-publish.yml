@@ -34,9 +34,6 @@ concurrency:
   group: release-publish-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: read
-
 defaults:
   run:
     shell: bash
@@ -51,6 +48,8 @@ jobs:
   verify-tag:
     name: gate-1-tag-version-check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     outputs:
       version: ${{ steps.extract.outputs.version }}
@@ -92,6 +91,8 @@ jobs:
     name: gate-2-quality
     needs: verify-tag
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 20
     env:
       L9_ENVIRONMENT: "test"
@@ -140,6 +141,8 @@ jobs:
     name: gate-3-dep-audit
     needs: quality-gate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -174,6 +177,8 @@ jobs:
     name: gate-4-build
     needs: [dep-audit, verify-tag]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -210,6 +215,8 @@ jobs:
     name: gate-5-sbom
     needs: [build, verify-tag]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -319,6 +326,7 @@ jobs:
     needs: [verify-tag, quality-gate, dep-audit, build, sbom, publish, gh-release]
     if: always()
     runs-on: ubuntu-latest
+    permissions: {}
     timeout-minutes: 2
     steps:
       - name: Evaluate release gates
