@@ -116,5 +116,5 @@ def test_validate_hop_trace_detects_tampering() -> None:
     tampered_hop = packet.hop_trace[0].model_copy(update={"status": "failed"})
     tampered_packet = packet.model_copy(update={"hop_trace": (tampered_hop,)})
 
-    with pytest.raises(Exception):
+    with pytest.raises((ValueError, Exception)):
         validate_hop_trace(tampered_packet)

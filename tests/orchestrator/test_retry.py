@@ -31,11 +31,14 @@ def test_should_retry_returns_true_for_retryable_error_before_limit() -> None:
         retryable_error_types=("GateClientError", "TimeoutError"),
     )
 
-    assert should_retry(
-        attempt=1,
-        error=GateClientError("temporary failure"),
-        policy=policy,
-    ) is True
+    assert (
+        should_retry(
+            attempt=1,
+            error=GateClientError("temporary failure"),
+            policy=policy,
+        )
+        is True
+    )
 
 
 def test_should_retry_returns_false_for_non_retryable_error_or_limit() -> None:
@@ -44,14 +47,20 @@ def test_should_retry_returns_false_for_non_retryable_error_or_limit() -> None:
         retryable_error_types=("GateClientError",),
     )
 
-    assert should_retry(
-        attempt=1,
-        error=NonRetryableError("hard failure"),
-        policy=policy,
-    ) is False
+    assert (
+        should_retry(
+            attempt=1,
+            error=NonRetryableError("hard failure"),
+            policy=policy,
+        )
+        is False
+    )
 
-    assert should_retry(
-        attempt=2,
-        error=GateClientError("retry budget exhausted"),
-        policy=policy,
-    ) is False
+    assert (
+        should_retry(
+            attempt=2,
+            error=GateClientError("retry budget exhausted"),
+            policy=policy,
+        )
+        is False
+    )

@@ -72,7 +72,11 @@ class GateClientConfig(BaseModel):
             return None
         if key_id in self.verifying_keys:
             return self.verifying_keys[key_id]
-        if self.signing_key_id is not None and key_id == self.signing_key_id and self.signing_key is not None:
+        if (
+            self.signing_key_id is not None
+            and key_id == self.signing_key_id
+            and self.signing_key is not None
+        ):
             return self.signing_key
         return None
 

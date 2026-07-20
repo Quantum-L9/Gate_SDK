@@ -4,8 +4,9 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from starlette.responses import Response
 
 from constellation_node_sdk.gate.registration import register_from_env
 from constellation_node_sdk.transport.packet import TransportPacket
@@ -103,7 +104,7 @@ def create_node_app(
             packet = TransportPacket.model_validate(body)
 
             response_signing_key, response_signing_algorithm = _key_material_from_config(
-                resolved_config,
+                resolved_config
             )
 
             response_packet = await execute_transport_packet(
@@ -113,7 +114,9 @@ def create_node_app(
                     response_signing_key if response_signing_algorithm == "hmac-sha256" else None
                 ),
                 signing_private_key=(
-                    response_signing_key if response_signing_algorithm == "ed25519" else None
+                    str(response_signing_key)
+                    if response_signing_algorithm == "ed25519" and response_signing_key
+                    else None
                 ),
                 signing_key_id=resolved_config.signing_key_id,
                 signing_algorithm=response_signing_algorithm,
@@ -144,7 +147,7 @@ def create_node_app(
         except Exception as exc:
             if packet is not None and resolved_config.return_transport_errors:
                 response_signing_key, response_signing_algorithm = _key_material_from_config(
-                    resolved_config,
+                    resolved_config
                 )
                 failure_packet = create_error_transport_packet(
                     packet,
@@ -156,7 +159,9 @@ def create_node_app(
                         else None
                     ),
                     signing_private_key=(
-                        response_signing_key if response_signing_algorithm == "ed25519" else None
+                        str(response_signing_key)
+                        if response_signing_algorithm == "ed25519" and response_signing_key
+                        else None
                     ),
                     signing_key_id=resolved_config.signing_key_id,
                     signing_algorithm=response_signing_algorithm,

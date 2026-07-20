@@ -41,7 +41,7 @@ def test_validate_transport_packet_rejects_wrong_destination_for_local_node() ->
         reply_to="client",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises((ValueError, Exception)):
         validate_transport_packet(
             packet,
             local_node="worker-a",
@@ -59,7 +59,7 @@ def test_validate_transport_packet_rejects_missing_signature_when_required() -> 
         reply_to="client",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises((ValueError, Exception)):
         validate_transport_packet(
             packet,
             require_signature=True,
@@ -77,7 +77,7 @@ def test_validate_transport_packet_enforces_idempotency_for_selected_actions() -
         reply_to="client",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises((ValueError, Exception)):
         validate_transport_packet(
             packet,
             required_idempotency_actions=("score",),

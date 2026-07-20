@@ -122,7 +122,9 @@ def sign_hop(
         private_key = _load_ed25519_private_key(raw_key)
         signature = private_key.sign(hop.hop_hash.encode("utf-8")).hex()
     else:
-        raise TransportAuthenticationError(f"unsupported hop signature algorithm: {normalized_algorithm}")
+        raise TransportAuthenticationError(
+            f"unsupported hop signature algorithm: {normalized_algorithm}"
+        )
 
     return hop.model_copy(
         update={
@@ -147,7 +149,9 @@ def verify_hop_signature(
 
     key = _resolve_key(key_resolver, hop.hop_signing_key_id)
     if key is None:
-        raise TransportAuthenticationError("no verifying key available for hop signature verification")
+        raise TransportAuthenticationError(
+            "no verifying key available for hop signature verification"
+        )
 
     if hop.hop_signature_algorithm == "hmac-sha256":
         expected = hmac.new(key, hop.hop_hash.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -161,7 +165,9 @@ def verify_hop_signature(
         except (ValueError, InvalidSignature) as exc:
             raise TransportAuthenticationError("invalid ed25519 hop signature") from exc
 
-    raise TransportAuthenticationError(f"unsupported hop signature algorithm: {hop.hop_signature_algorithm}")
+    raise TransportAuthenticationError(
+        f"unsupported hop signature algorithm: {hop.hop_signature_algorithm}"
+    )
 
 
 def _finalize_hop(
@@ -357,7 +363,11 @@ def validate_hop_trace(
         if hop.hop_hash != recomputed:
             raise TransportIntegrityError("hop_hash does not match recomputed hop hash")
 
-        if require_monotonic_timestamps and previous_timestamp is not None and hop.timestamp < previous_timestamp:
+        if (
+            require_monotonic_timestamps
+            and previous_timestamp is not None
+            and hop.timestamp < previous_timestamp
+        ):
             raise TransportValidationError("hop timestamps must be non-decreasing")
 
         if verify_hop_signatures and hop.hop_signature is not None:
