@@ -15,6 +15,7 @@ def run_preflight(config: NodeRuntimeConfig) -> None:
     _validate_action_configuration(config)
     _validate_attachment_configuration(config)
     _validate_gate_configuration(config)
+    _validate_gate_ingress_authentication(config)
 
 
 def _validate_security_profile(config: NodeRuntimeConfig) -> None:
@@ -41,19 +42,22 @@ def _validate_security_profile(config: NodeRuntimeConfig) -> None:
 
 def _validate_action_configuration(config: NodeRuntimeConfig) -> None:
     allowed_actions = set(config.allowed_actions)
+    execute_allowed_actions = set(config.execute_allowed_actions)
+    known_actions = allowed_actions | execute_allowed_actions
     required_idempotency = set(config.require_idempotency_for_actions)
 
-    if required_idempotency and not allowed_actions:
+    if required_idempotency and not known_actions:
         raise PreflightFailure(
-            "require_idempotency_for_actions is configured but allowed_actions is empty"
+            "require_idempotency_for_actions is configured but allowed_actions and"
+            " execute_allowed_actions are both empty"
         )
 
-    if not required_idempotency.issubset(allowed_actions):
-        invalid = sorted(required_idempotency - allowed_actions)
+    if not required_idempotency.issubset(known_actions):
+        invalid = sorted(required_idempotency - known_actions)
         joined = ", ".join(invalid)
         raise PreflightFailure(
             "require_idempotency_for_actions contains actions not present"
-            f" in allowed_actions: {joined}"
+            f" in allowed_actions or execute_allowed_actions: {joined}"
         )
 
     if "response" in allowed_actions or "failure" in allowed_actions:
@@ -77,3 +81,42 @@ def _validate_gate_configuration(config: NodeRuntimeConfig) -> None:
         return
     if not (config.gate_url.startswith("http://") or config.gate_url.startswith("https://")):
         raise PreflightFailure("gate_url must start with http:// or https://")
+
+
+def _validate_gate_ingress_authentication(config: NodeRuntimeConfig) -> None:
+    """
+    Gate-only ingress trust (provenance.resolved_by_gate, address.source_node,
+    provenance.route_kind) is caller-supplied and carries no authentication by
+    itself. If enforce_gate_only_ingress is relied upon without also requiring
+    a verified transport signature, any direct client can forge these claims
+    and bypass Gate-mediated routing entirely. Fail closed outside dev_mode.
+    """
+    if config.dev_mode or not config.enforce_gate_only_ingress:
+        return
+
+    execute_require_signature = (
+        config.execute_require_signature
+        if config.execute_require_signature is not None
+        else config.require_signature
+    )
+    if not execute_require_signature:
+        raise PreflightFailure(
+            "enforce_gate_only_ingress=true requires a verified signature on /v1/execute "
+            "(set require_signature=true or execute_require_signature=true); "
+            "unsigned Gate-only ingress trusts unauthenticated caller-supplied provenance"
+        )
+
+    if not config.enable_relay_route:
+        return
+
+    relay_require_signature = (
+        config.relay_require_signature
+        if config.relay_require_signature is not None
+        else config.require_signature
+    )
+    if not relay_require_signature:
+        raise PreflightFailure(
+            "enforce_gate_only_ingress=true requires a verified signature on /v1/relay "
+            "(set require_signature=true or relay_require_signature=true); "
+            "unsigned Gate-only ingress trusts unauthenticated caller-supplied provenance"
+        )

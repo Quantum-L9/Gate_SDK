@@ -88,11 +88,13 @@ Fields:
 - `origin_kind`
 - `requested_action`
 - `resolved_by_gate`
+- `route_kind` (optional: `"external_ingress"` or `"gate_relay"`)
 - `original_source_node`
 
 Purpose:
 - distinguish client, node, and Gate-origin traffic
 - preserve source context across routing
+- `route_kind` distinguishes external client ingress from internal Gate-mediated relay traffic
 
 ## Hop trace
 

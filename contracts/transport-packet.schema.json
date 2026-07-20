@@ -317,6 +317,17 @@
         "resolved_by_gate": {
           "type": "boolean"
         },
+        "route_kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "external_ingress",
+            "gate_relay",
+            null
+          ]
+        },
         "original_source_node": {
           "type": [
             "string",

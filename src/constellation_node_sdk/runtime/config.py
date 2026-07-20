@@ -72,6 +72,26 @@ class NodeRuntimeConfig(BaseModel):
     replay_enabled: bool = True
     verify_hop_signatures: bool = False
 
+    gate_node_name: str = "gate"
+    enforce_gate_only_ingress: bool = True
+    enable_relay_route: bool = True
+    require_gate_mediation_provenance: bool = True
+
+    execute_require_signature: bool | None = None
+    execute_verify_hop_signatures: bool | None = None
+    execute_allowed_actions: tuple[str, ...] = ()
+    execute_allowed_packet_types: tuple[str, ...] = ()
+
+    relay_require_signature: bool | None = None
+    relay_verify_hop_signatures: bool | None = None
+    relay_allowed_actions: tuple[str, ...] = ()
+    relay_allowed_packet_types: tuple[str, ...] = (
+        "request",
+        "command",
+        "delegation",
+        "replay_request",
+    )
+
     gate_url: str | None = None
     # Default to loopback — containers must set HOST=0.0.0.0 explicitly via env var.
     # This prevents accidental public binding on bare-metal or dev environments.
@@ -81,6 +101,7 @@ class NodeRuntimeConfig(BaseModel):
     @field_validator(
         "environment",
         "node_name",
+        "gate_node_name",
         "service_name",
         "service_version",
         "signing_algorithm",
@@ -116,6 +137,10 @@ class NodeRuntimeConfig(BaseModel):
         "allowed_packet_types",
         "require_idempotency_for_actions",
         "attachment_allowed_schemes",
+        "execute_allowed_actions",
+        "execute_allowed_packet_types",
+        "relay_allowed_actions",
+        "relay_allowed_packet_types",
     )
     @classmethod
     def validate_string_tuples(cls, value: tuple[str, ...]) -> tuple[str, ...]:
@@ -172,7 +197,8 @@ class NodeRuntimeConfig(BaseModel):
         if self.signing_algorithm == "ed25519" and self.signing_key is not None:
             raise ValueError("signing_key must not be used with ed25519")
 
-        invalid_idempotency = set(self.require_idempotency_for_actions) - set(self.allowed_actions)
+        known_actions = set(self.allowed_actions) | set(self.execute_allowed_actions)
+        invalid_idempotency = set(self.require_idempotency_for_actions) - known_actions
         if invalid_idempotency:
             invalid = ", ".join(sorted(invalid_idempotency))
             raise ValueError(f"require_idempotency_for_actions contains unknown actions: {invalid}")
@@ -183,6 +209,18 @@ class NodeRuntimeConfig(BaseModel):
         if self.max_attachments > 0 and not self.attachment_allowed_schemes:
             raise ValueError(
                 "attachment_allowed_schemes must be configured when attachments are enabled"
+            )
+
+        execute_actions = (
+            set(self.execute_allowed_actions)
+            if self.execute_allowed_actions
+            else set(self.allowed_actions)
+        )
+        invalid_execute_idempotency = set(self.require_idempotency_for_actions) - execute_actions
+        if invalid_execute_idempotency:
+            invalid = ", ".join(sorted(invalid_execute_idempotency))
+            raise ValueError(
+                f"require_idempotency_for_actions contains unknown execute actions: {invalid}"
             )
 
         return self
@@ -230,6 +268,37 @@ def get_runtime_config() -> NodeRuntimeConfig:
         allow_private_attachment_hosts=_env_bool("L9_ALLOW_PRIVATE_ATTACHMENT_HOSTS", False),
         replay_enabled=_env_bool("L9_REPLAY_ENABLED", True),
         verify_hop_signatures=_env_bool("L9_VERIFY_HOP_SIGNATURES", False),
+        gate_node_name=os.getenv("L9_GATE_NODE_NAME", "gate"),
+        enforce_gate_only_ingress=_env_bool("L9_ENFORCE_GATE_ONLY_INGRESS", True),
+        enable_relay_route=_env_bool("L9_ENABLE_RELAY_ROUTE", True),
+        require_gate_mediation_provenance=_env_bool("L9_REQUIRE_GATE_MEDIATION_PROVENANCE", True),
+        execute_require_signature=(
+            _env_bool("L9_EXECUTE_REQUIRE_SIGNATURE", False)
+            if os.getenv("L9_EXECUTE_REQUIRE_SIGNATURE") is not None
+            else None
+        ),
+        execute_verify_hop_signatures=(
+            _env_bool("L9_EXECUTE_VERIFY_HOP_SIGNATURES", False)
+            if os.getenv("L9_EXECUTE_VERIFY_HOP_SIGNATURES") is not None
+            else None
+        ),
+        execute_allowed_actions=_env_tuple("L9_EXECUTE_ALLOWED_ACTIONS"),
+        execute_allowed_packet_types=_env_tuple("L9_EXECUTE_ALLOWED_PACKET_TYPES"),
+        relay_require_signature=(
+            _env_bool("L9_RELAY_REQUIRE_SIGNATURE", False)
+            if os.getenv("L9_RELAY_REQUIRE_SIGNATURE") is not None
+            else None
+        ),
+        relay_verify_hop_signatures=(
+            _env_bool("L9_RELAY_VERIFY_HOP_SIGNATURES", False)
+            if os.getenv("L9_RELAY_VERIFY_HOP_SIGNATURES") is not None
+            else None
+        ),
+        relay_allowed_actions=_env_tuple("L9_RELAY_ALLOWED_ACTIONS"),
+        relay_allowed_packet_types=(
+            _env_tuple("L9_RELAY_ALLOWED_PACKET_TYPES")
+            or ("request", "command", "delegation", "replay_request")
+        ),
         gate_url=os.getenv("GATE_URL"),
         # HOST env var overrides the safe 127.0.0.1 default.
         # In containers set HOST=0.0.0.0. On bare metal leave unset.
