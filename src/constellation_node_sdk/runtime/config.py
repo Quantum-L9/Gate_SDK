@@ -251,10 +251,8 @@ def get_runtime_config() -> NodeRuntimeConfig:
         signing_key_id=os.getenv("L9_SIGNING_KEY_ID"),
         verifying_keys=_env_json_map("L9_VERIFYING_KEYS_JSON"),
         allowed_actions=_env_tuple("L9_ALLOWED_ACTIONS"),
-        allowed_packet_types=(
-            _env_tuple("L9_ALLOWED_PACKET_TYPES")
-            or ("request", "command", "delegation", "replay_request")
-        ),
+        allowed_packet_types=_env_tuple("L9_ALLOWED_PACKET_TYPES")
+        or ("request", "command", "delegation", "replay_request"),
         require_idempotency_for_actions=_env_tuple("L9_REQUIRE_IDEMPOTENCY_FOR_ACTIONS"),
         allowed_clock_skew_seconds=int(os.getenv("L9_ALLOWED_CLOCK_SKEW_SECONDS", "30")),
         max_packet_bytes=int(os.getenv("L9_MAX_PACKET_BYTES", "262144")),

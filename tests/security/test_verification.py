@@ -21,10 +21,13 @@ def test_verify_transport_packet_signature_returns_true_for_valid_hmac_signature
         algorithm="hmac-sha256",
     )
 
-    assert verify_transport_packet_signature(
-        signed,
-        key_resolver={"hmac-key-1": "super-secret"},
-    ) is True
+    assert (
+        verify_transport_packet_signature(
+            signed,
+            key_resolver={"hmac-key-1": "super-secret"},
+        )
+        is True
+    )
 
 
 def test_verify_transport_packet_signature_returns_false_for_unsigned_packet() -> None:
@@ -37,7 +40,10 @@ def test_verify_transport_packet_signature_returns_false_for_unsigned_packet() -
         reply_to="client",
     )
 
-    assert verify_transport_packet_signature(
-        packet,
-        key_resolver={"hmac-key-1": "super-secret"},
-    ) is False
+    assert (
+        verify_transport_packet_signature(
+            packet,
+            key_resolver={"hmac-key-1": "super-secret"},
+        )
+        is False
+    )

@@ -218,4 +218,3 @@ TransportPacket is not just a DTO.
 It is a distributed execution log + routing contract + security boundary.
 
 ⸻
-

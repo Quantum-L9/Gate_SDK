@@ -93,8 +93,7 @@ class TransportHeader(BaseModel):
         normalized = value.strip().lower()
         if not _ACTION_RE.match(normalized):
             raise ValueError(
-                "action must be lowercase alphanumeric with dots,"
-                " underscores, or dashes, max 64 chars"
+                "action must be lowercase alphanumeric + dash/underscore/dot, max 64 chars"
             )
         return normalized
 
@@ -351,8 +350,7 @@ class TransportHop(BaseModel):
         return normalized
 
     @field_validator(
-        "target_node", "error_code", "error_message",
-        "hop_signature", "hop_signing_key_id",
+        "target_node", "error_code", "error_message", "hop_signature", "hop_signing_key_id"
     )
     @classmethod
     def validate_optional_strings(cls, value: str | None) -> str | None:

@@ -52,8 +52,8 @@ def _validate_action_configuration(config: NodeRuntimeConfig) -> None:
         invalid = sorted(required_idempotency - allowed_actions)
         joined = ", ".join(invalid)
         raise PreflightFailure(
-            "require_idempotency_for_actions contains actions"
-            f" not present in allowed_actions: {joined}"
+            "require_idempotency_for_actions contains actions not present"
+            f" in allowed_actions: {joined}"
         )
 
     if "response" in allowed_actions or "failure" in allowed_actions:

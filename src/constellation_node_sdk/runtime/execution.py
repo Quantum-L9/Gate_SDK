@@ -153,8 +153,14 @@ async def execute_transport_packet(
         )
 
     payload_status = str(response_packet.payload.get("status", "completed")).strip().lower()
-    valid_statuses = {"received", "validated", "processing", "delegated", "completed", "failed"}
-    if payload_status not in valid_statuses:
+    if payload_status not in {
+        "received",
+        "validated",
+        "processing",
+        "delegated",
+        "completed",
+        "failed",
+    }:
         payload_status = "completed"
 
     response_packet = response_packet.with_hop(

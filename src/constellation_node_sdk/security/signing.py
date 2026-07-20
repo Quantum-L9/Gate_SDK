@@ -11,7 +11,7 @@ from constellation_node_sdk.transport.hashing import compute_payload_hash, compu
 from constellation_node_sdk.transport.models import TransportSecurity
 from constellation_node_sdk.transport.packet import TransportPacket
 
-from .verification import TransportAuthenticationError
+from .errors import TransportAuthenticationError
 
 
 def _coerce_bytes(value: str | bytes) -> bytes:
@@ -100,7 +100,9 @@ def sign_transport_packet(
         private_key = _load_ed25519_private_key(raw_key)
         signature = private_key.sign(normalized.security.transport_hash.encode("utf-8")).hex()
     else:
-        raise TransportAuthenticationError(f"unsupported signature algorithm: {normalized_algorithm}")
+        raise TransportAuthenticationError(
+            f"unsupported signature algorithm: {normalized_algorithm}"
+        )
 
     signed = normalized.model_copy(
         update={

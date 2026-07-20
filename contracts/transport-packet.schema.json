@@ -53,7 +53,7 @@
         },
         "action": {
           "type": "string",
-          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
         },
         "priority": {
           "type": "integer",
@@ -312,7 +312,7 @@
         },
         "requested_action": {
           "type": "string",
-          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
         },
         "resolved_by_gate": {
           "type": "boolean"
@@ -421,7 +421,7 @@
           },
           "action": {
             "type": "string",
-            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
           },
           "direction": {
             "type": "string",
