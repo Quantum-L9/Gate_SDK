@@ -68,6 +68,8 @@ jobs:
           echo "Tag: ${TAG} → Version: ${VERSION}"
 
       - name: Verify version matches pyproject.toml
+        env:
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
           TOML_VERSION=$(python - <<'PY'
           import re, pathlib
@@ -76,7 +78,6 @@ jobs:
           print(m.group(1) if m else "NOT_FOUND")
           PY
           )
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
           echo "pyproject.toml version: ${TOML_VERSION}"
           echo "Tag version:            ${TAG_VERSION}"
           if [[ "${TOML_VERSION}" != "${TAG_VERSION}" && "${{ github.event_name }}" != "workflow_dispatch" ]]; then
@@ -226,10 +227,12 @@ jobs:
           python -m pip install cyclonedx-bom
 
       - name: Generate SBOM
+        env:
+          RELEASE_VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |
           cyclonedx-py environment \
             --output-format json \
-            --output-file sbom-${{ needs.verify-tag.outputs.version }}.cdx.json
+            --output-file "sbom-${RELEASE_VERSION}.cdx.json"
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
