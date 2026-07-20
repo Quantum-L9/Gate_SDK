@@ -118,7 +118,7 @@ class NodeRuntimeConfig(BaseModel):
         "attachment_allowed_schemes",
     )
     @classmethod
-    def validate_string_tuples(cls, value: tuple[str, ...]) -> tuple[str, ...]) -> tuple[str, ...]:
+    def validate_string_tuples(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         normalized = tuple(item.strip().lower() for item in value if item.strip())
         if len(set(normalized)) != len(normalized):
             raise ValueError("tuple entries must not contain duplicates")
