@@ -22,9 +22,7 @@ def test_execute_ingress_rejects_non_gate_source():
         ),
     )
     with pytest.raises(ValueError, match="originate from 'gate'"):
-        validate_execute_ingress_packet(
-            packet, local_node="worker-a", gate_node_name="gate"
-        )
+        validate_execute_ingress_packet(packet, local_node="worker-a", gate_node_name="gate")
 
 
 def test_execute_ingress_accepts_gate_source_with_external_ingress_route():
@@ -43,6 +41,4 @@ def test_execute_ingress_accepts_gate_source_with_external_ingress_route():
             original_source_node=None,
         ),
     )
-    validate_execute_ingress_packet(
-        packet, local_node="worker-a", gate_node_name="gate"
-    )
+    validate_execute_ingress_packet(packet, local_node="worker-a", gate_node_name="gate")

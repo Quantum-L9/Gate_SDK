@@ -59,9 +59,7 @@ def _resolve_route_validation(
         if resolved_config.execute_verify_hop_signatures is not None
         else resolved_config.verify_hop_signatures,
         "allowed_actions": (
-            resolved_config.execute_allowed_actions
-            or resolved_config.allowed_actions
-            or None
+            resolved_config.execute_allowed_actions or resolved_config.allowed_actions or None
         ),
         "allowed_packet_types": (
             resolved_config.execute_allowed_packet_types
@@ -141,7 +139,8 @@ def create_node_app(
                 )
 
             route_validation = _resolve_route_validation(
-                route_mode="execute", resolved_config=resolved_config,
+                route_mode="execute",
+                resolved_config=resolved_config,
             )
 
             response_signing_key, response_signing_algorithm = _key_material_from_config(
@@ -224,8 +223,9 @@ def create_node_app(
             raise_http_exception(exc)
 
     if resolved_config.enable_relay_route:
+
         @app.post("/v1/relay")
-        async def relay(request: Request):
+        async def relay(request: Request) -> JSONResponse:
             packet: TransportPacket | None = None
             try:
                 packet = await _parse_transport_packet(request)
@@ -240,10 +240,11 @@ def create_node_app(
                     )
 
                 route_validation = _resolve_route_validation(
-                    route_mode="relay", resolved_config=resolved_config,
+                    route_mode="relay",
+                    resolved_config=resolved_config,
                 )
-                response_signing_key, response_signing_algorithm = (
-                    _key_material_from_config(resolved_config)
+                response_signing_key, response_signing_algorithm = _key_material_from_config(
+                    resolved_config
                 )
 
                 response_packet = await execute_transport_packet(
@@ -256,8 +257,8 @@ def create_node_app(
                         else None
                     ),
                     signing_private_key=(
-                        response_signing_key
-                        if response_signing_algorithm == "ed25519"
+                        str(response_signing_key)
+                        if response_signing_algorithm == "ed25519" and response_signing_key
                         else None
                     ),
                     signing_key_id=resolved_config.signing_key_id,
@@ -288,8 +289,8 @@ def create_node_app(
 
             except Exception as exc:
                 if packet is not None and resolved_config.return_transport_errors:
-                    response_signing_key, response_signing_algorithm = (
-                        _key_material_from_config(resolved_config)
+                    response_signing_key, response_signing_algorithm = _key_material_from_config(
+                        resolved_config
                     )
                     failure_packet = create_error_transport_packet(
                         packet,
@@ -301,8 +302,8 @@ def create_node_app(
                             else None
                         ),
                         signing_private_key=(
-                            response_signing_key
-                            if response_signing_algorithm == "ed25519"
+                            str(response_signing_key)
+                            if response_signing_algorithm == "ed25519" and response_signing_key
                             else None
                         ),
                         signing_key_id=resolved_config.signing_key_id,

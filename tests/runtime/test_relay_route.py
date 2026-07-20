@@ -47,6 +47,4 @@ def test_relay_ingress_rejects_wrong_route_kind():
         ),
     )
     with pytest.raises(ValueError, match="route_kind"):
-        validate_relay_ingress_packet(
-            packet, local_node="worker-a", gate_node_name="gate"
-        )
+        validate_relay_ingress_packet(packet, local_node="worker-a", gate_node_name="gate")

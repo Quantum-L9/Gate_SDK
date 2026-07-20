@@ -86,7 +86,10 @@ class NodeRuntimeConfig(BaseModel):
     relay_verify_hop_signatures: bool | None = None
     relay_allowed_actions: tuple[str, ...] = ()
     relay_allowed_packet_types: tuple[str, ...] = (
-        "request", "command", "delegation", "replay_request",
+        "request",
+        "command",
+        "delegation",
+        "replay_request",
     )
 
     gate_url: str | None = None
@@ -210,9 +213,7 @@ class NodeRuntimeConfig(BaseModel):
             if self.execute_allowed_actions
             else set(self.allowed_actions)
         )
-        invalid_execute_idempotency = (
-            set(self.require_idempotency_for_actions) - execute_actions
-        )
+        invalid_execute_idempotency = set(self.require_idempotency_for_actions) - execute_actions
         if invalid_execute_idempotency:
             invalid = ", ".join(sorted(invalid_execute_idempotency))
             raise ValueError(
