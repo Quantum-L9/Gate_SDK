@@ -44,24 +44,15 @@ class RuntimeErrorDetail:
 def classify_exception(exc: Exception) -> RuntimeErrorDetail:
     """
     Map runtime and transport exceptions to safe HTTP-facing error details.
-    """
-    if isinstance(
-        exc,
-        (
-            ValueError,
-            TransportValidationError,
-            TransportIntegrityError,
-            PacketSizeError,
-            SchemaVersionError,
-            TenantMutationError,
-        ),
-    ):
-        return RuntimeErrorDetail(
-            code="invalid_request",
-            message=str(exc),
-            status_code=400,
-        )
 
+    NOTE: TransportAuthenticationError, TransportAuthorizationError,
+    TransportExpiredError, and TransportNotYetValidError are all subclasses
+    of TransportValidationError (see transport/errors.py). They MUST be
+    checked before the generic TransportValidationError branch below —
+    otherwise isinstance() matches the parent class first and every one of
+    these more specific errors would incorrectly collapse to a 400
+    "invalid_request" instead of its intended 401/403/409 status.
+    """
     if isinstance(exc, (TransportAuthenticationError,)):
         return RuntimeErrorDetail(
             code="authentication_failed",
@@ -81,6 +72,23 @@ def classify_exception(exc: Exception) -> RuntimeErrorDetail:
             code="temporal_validity_failed",
             message=str(exc),
             status_code=409,
+        )
+
+    if isinstance(
+        exc,
+        (
+            ValueError,
+            TransportValidationError,
+            TransportIntegrityError,
+            PacketSizeError,
+            SchemaVersionError,
+            TenantMutationError,
+        ),
+    ):
+        return RuntimeErrorDetail(
+            code="invalid_request",
+            message=str(exc),
+            status_code=400,
         )
 
     if isinstance(exc, TimeoutError):

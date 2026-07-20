@@ -15,7 +15,6 @@ jobs:
     name: pytest-coverage
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [quality]
 
     strategy:
       fail-fast: false
@@ -55,10 +54,14 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
-# NOTE: This job declares needs: [quality] which references the quality job
-# defined in ci.yml. Both workflows run in the same CI context on the same
-# trigger. If the quality job is renamed in ci.yml, update needs: here.
+# NOTE: This job previously declared `needs: [quality]`, intending to depend
+# on the "quality" job defined in ci.yml. GitHub Actions' `needs:` can only
+# reference jobs within the SAME workflow file — cross-workflow dependencies
+# are not supported this way (a job named "quality" doesn't even exist in
+# ci.yml). That reference was dangling and caused this workflow to fail with
+# a startup_failure before any job ever ran. Removed; this job now runs
+# independently in parallel with ci.yml on the same push/pull_request
+# trigger, matching integration.yml's pattern.
 # Enforcement: job fails if pytest --cov-fail-under=80 exits non-zero.
-# Merge gate: coverage job must pass before build-artifacts may proceed.
 # To add as a required status check, enable branch protection on main/master
 # and add "coverage / pytest-coverage (3.12)" to required checks.
