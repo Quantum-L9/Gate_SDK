@@ -24,14 +24,14 @@ from constellation_node_sdk.transport.packet import create_transport_packet
 
 
 def _packet(**overrides):
-    defaults = dict(
-        action="score",
-        payload={"entity_id": "42"},
-        tenant="tenant-a",
-        destination_node="gate",
-        source_node="client",
-        reply_to="client",
-    )
+    defaults = {
+        "action": "score",
+        "payload": {"entity_id": "42"},
+        "tenant": "tenant-a",
+        "destination_node": "gate",
+        "source_node": "client",
+        "reply_to": "client",
+    }
     defaults.update(overrides)
     return create_transport_packet(**defaults)
 
@@ -249,21 +249,26 @@ def test_validate_transport_packet_rejects_blocked_attachment_hosts(host: str) -
         validate_transport_packet(packet, dev_mode=True)
 
 
+# NOTE: these tests exercise validate_transport_packet's private/public IP host
+# gating (see security/validation.py). Literal IP addresses are required to hit
+# each branch and are never dialed over the network — they're static strings
+# parsed by ipaddress.ip_address(), not live hosts. NOSONAR: hardcoded-ip is a
+# false positive here by design of the test.
 def test_validate_transport_packet_rejects_private_ip_attachment_host_by_default() -> None:
-    packet = _with_attachments(_packet(), [_attachment("https://10.0.0.5/path")])
+    packet = _with_attachments(_packet(), [_attachment("https://10.0.0.5/path")])  # NOSONAR
 
     with pytest.raises(TransportValidationError, match="private attachment hosts are not allowed"):
         validate_transport_packet(packet, dev_mode=True)
 
 
 def test_validate_transport_packet_allows_private_ip_attachment_host_when_enabled() -> None:
-    packet = _with_attachments(_packet(), [_attachment("https://10.0.0.5/path")])
+    packet = _with_attachments(_packet(), [_attachment("https://10.0.0.5/path")])  # NOSONAR
 
     validate_transport_packet(packet, dev_mode=True, allow_private_attachment_hosts=True)
 
 
 def test_validate_transport_packet_allows_public_ip_attachment_host() -> None:
-    packet = _with_attachments(_packet(), [_attachment("https://8.8.8.8/path")])
+    packet = _with_attachments(_packet(), [_attachment("https://8.8.8.8/path")])  # NOSONAR
 
     validate_transport_packet(packet, dev_mode=True)
 

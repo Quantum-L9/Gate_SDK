@@ -84,8 +84,9 @@ def test_classify_exception_maps_unknown_exception_to_500_generic_message() -> N
 
 
 def test_raise_http_exception_raises_http_exception_with_classified_detail() -> None:
+    original = TransportAuthorizationError("denied")
     with pytest.raises(HTTPException) as exc_info:
-        raise_http_exception(TransportAuthorizationError("denied"))
+        raise_http_exception(original)
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == {

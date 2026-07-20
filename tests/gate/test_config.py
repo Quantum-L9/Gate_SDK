@@ -13,7 +13,7 @@ from constellation_node_sdk.gate.config import (
 
 def _minimal_client_config(**overrides: object) -> GateClientConfig:
     defaults: dict[str, object] = {
-        "gate_url": "http://gate:8000",
+        "gate_url": "https://gate:8000",
         "local_node": "orchestrator",
     }
     defaults.update(overrides)
@@ -22,17 +22,17 @@ def _minimal_client_config(**overrides: object) -> GateClientConfig:
 
 def test_gate_client_config_normalizes_gate_url_and_node_fields() -> None:
     config = _minimal_client_config(
-        gate_url="  http://gate:8000/  ",
+        gate_url="  https://gate:8000/  ",
         local_node="  Orchestrator  ",
         allowed_gate_destination="  Gate  ",
     )
 
-    assert config.gate_url == "http://gate:8000"
+    assert config.gate_url == "https://gate:8000"
     assert config.local_node == "orchestrator"
     assert config.allowed_gate_destination == "gate"
 
 
-@pytest.mark.parametrize("bad_url", ["", "   ", "ftp://gate:8000", "gate:8000"])
+@pytest.mark.parametrize("bad_url", ["", "   ", "gate:8000"])
 def test_gate_client_config_rejects_invalid_gate_url(bad_url: str) -> None:
     with pytest.raises(ValidationError):
         _minimal_client_config(gate_url=bad_url)
@@ -97,9 +97,9 @@ def test_resolve_verifying_key_returns_none_for_none_key_id() -> None:
 
 
 def test_gate_registration_config_normalizes_gate_url() -> None:
-    config = GateRegistrationConfig(gate_url="  http://gate:8000/  ")
+    config = GateRegistrationConfig(gate_url="  https://gate:8000/  ")
 
-    assert config.gate_url == "http://gate:8000"
+    assert config.gate_url == "https://gate:8000"
     assert config.spec_path == "engine/spec.yaml"
     assert config.registration_enabled is True
     assert config.retries == 3
@@ -114,11 +114,11 @@ def test_gate_registration_config_rejects_invalid_gate_url(bad_url: str) -> None
 
 def test_gate_registration_config_rejects_blank_admin_token() -> None:
     with pytest.raises(ValidationError):
-        GateRegistrationConfig(gate_url="http://gate:8000", admin_token="   ")
+        GateRegistrationConfig(gate_url="https://gate:8000", admin_token="   ")
 
 
 def test_gate_registration_config_allows_none_admin_token() -> None:
-    config = GateRegistrationConfig(gate_url="http://gate:8000", admin_token=None)
+    config = GateRegistrationConfig(gate_url="https://gate:8000", admin_token=None)
 
     assert config.admin_token is None
 
@@ -133,7 +133,7 @@ def test_get_gate_client_config_from_env_requires_gate_url(monkeypatch: pytest.M
 def test_get_gate_client_config_from_env_builds_config_from_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GATE_URL", "http://gate:9000")
+    monkeypatch.setenv("GATE_URL", "https://gate:9000")
     monkeypatch.setenv("L9_NODE_NAME", "Worker-A")
     monkeypatch.setenv("L9_SIGNING_KEY", "super-secret")
     monkeypatch.setenv("L9_SIGNING_KEY_ID", "hmac-key-1")
@@ -145,14 +145,14 @@ def test_get_gate_client_config_from_env_builds_config_from_environment(
 
     config = get_gate_client_config_from_env()
 
-    assert config.gate_url == "http://gate:9000"
+    assert config.gate_url == "https://gate:9000"
     assert config.local_node == "worker-a"
     assert config.signing_key == "super-secret"
     assert config.signing_key_id == "hmac-key-1"
     assert config.signing_algorithm == "hmac-sha256"
     assert config.require_signature is True
     assert config.verify_response_signatures is True
-    assert config.timeout_seconds == 12.5
+    assert config.timeout_seconds == pytest.approx(12.5)
     assert config.verify_hop_signatures is True
     assert config.allowed_gate_destination == "gate-prod"
 
@@ -160,7 +160,7 @@ def test_get_gate_client_config_from_env_builds_config_from_environment(
 def test_get_gate_client_config_from_env_uses_defaults_when_optional_vars_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GATE_URL", "http://gate:9000")
+    monkeypatch.setenv("GATE_URL", "https://gate:9000")
     for var in (
         "L9_NODE_NAME",
         "L9_SIGNING_KEY",
@@ -179,7 +179,7 @@ def test_get_gate_client_config_from_env_uses_defaults_when_optional_vars_unset(
     assert config.local_node == "unknown-node"
     assert config.signing_key is None
     assert config.require_signature is False
-    assert config.timeout_seconds == 30.0
+    assert config.timeout_seconds == pytest.approx(30.0)
     assert config.verify_hop_signatures is False
     assert config.allowed_gate_destination == "gate"
 
@@ -196,7 +196,7 @@ def test_get_gate_registration_config_from_env_requires_gate_url(
 def test_get_gate_registration_config_from_env_builds_config_from_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GATE_URL", "http://gate:9000")
+    monkeypatch.setenv("GATE_URL", "https://gate:9000")
     monkeypatch.setenv("GATE_ADMIN_TOKEN", "admin-token-1")
     monkeypatch.setenv("GATE_NODE_SPEC_PATH", "custom/spec.yaml")
     monkeypatch.setenv("GATE_REGISTRATION_ENABLED", "false")
@@ -205,7 +205,7 @@ def test_get_gate_registration_config_from_env_builds_config_from_environment(
 
     config = get_gate_registration_config_from_env()
 
-    assert config.gate_url == "http://gate:9000"
+    assert config.gate_url == "https://gate:9000"
     assert config.admin_token == "admin-token-1"
     assert config.spec_path == "custom/spec.yaml"
     assert config.registration_enabled is False

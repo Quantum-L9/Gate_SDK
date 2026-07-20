@@ -20,7 +20,7 @@ class _EchoOrchestrator(BaseOrchestrator):
 def _gate_client() -> GateClient:
     return GateClient(
         GateClientConfig(
-            gate_url="http://gate:8000",
+            gate_url="https://gate:8000",
             local_node="orchestrator",
         )
     )
