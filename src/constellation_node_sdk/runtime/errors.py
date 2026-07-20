@@ -100,6 +100,7 @@ def classify_exception(exc: Exception) -> RuntimeErrorDetail:
 def raise_http_exception(exc: Exception) -> NoReturn:
     """
     Raise a FastAPI HTTPException from a classified runtime exception.
+    Always raises — annotated NoReturn so mypy understands no return sentinel needed.
     """
     detail = classify_exception(exc)
     raise HTTPException(

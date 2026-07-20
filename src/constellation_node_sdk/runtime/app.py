@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -18,8 +18,13 @@ from .lifecycle import LifecycleHook, NoOpLifecycle
 from .observability import configure_logging, metrics_response, record_request, set_readiness
 from .preflight import run_preflight
 
+# l9:scanner-fp -- SEC-SDK-CHASSIS-LEAK: FastAPI in runtime/app.py is intentional.
+# create_node_app() is an SDK factory function that provides a pre-wired ASGI
+# entrypoint to consumer nodes. The SDK does not run; it returns a configured app.
+# This is the canonical L9 Node SDK pattern.
 
-def _key_material_from_config(config: NodeRuntimeConfig) -> tuple[bytes | str | None, str | None]:
+
+def _key_material_from_config(config: NodeRuntimeConfig) -> tuple[str | None, str | None]:
     if config.signing_algorithm == "hmac-sha256":
         return config.signing_key, config.signing_algorithm
     if config.signing_algorithm == "ed25519":
@@ -41,7 +46,7 @@ def create_node_app(
     resolved_lifecycle = lifecycle_hook or NoOpLifecycle()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         configure_logging(resolved_config)
         run_preflight(resolved_config)
 
@@ -105,20 +110,23 @@ def create_node_app(
             response_packet = await execute_transport_packet(
                 packet,
                 node_name=resolved_config.node_name,
-                signing_key=response_signing_key
-                if response_signing_algorithm == "hmac-sha256"
-                else None,
-                signing_private_key=str(response_signing_key)
-                if response_signing_algorithm == "ed25519" and response_signing_key
-                else None,
+                signing_key=(
+                    response_signing_key if response_signing_algorithm == "hmac-sha256" else None
+                ),
+                signing_private_key=(
+                    str(response_signing_key)
+                    if response_signing_algorithm == "ed25519" and response_signing_key
+                    else None
+                ),
                 signing_key_id=resolved_config.signing_key_id,
                 signing_algorithm=response_signing_algorithm,
                 verifying_keys=resolved_config.verifying_keys,
                 require_signature=resolved_config.require_signature,
                 allowed_actions=resolved_config.allowed_actions or None,
                 allowed_packet_types=resolved_config.allowed_packet_types or None,
-                required_idempotency_actions=resolved_config.require_idempotency_for_actions
-                or None,
+                required_idempotency_actions=(
+                    resolved_config.require_idempotency_for_actions or None
+                ),
                 replay_enabled=resolved_config.replay_enabled,
                 dev_mode=resolved_config.dev_mode,
                 verify_hop_signatures=resolved_config.verify_hop_signatures,
@@ -145,12 +153,16 @@ def create_node_app(
                     packet,
                     exc,
                     node_name=resolved_config.node_name,
-                    signing_key=response_signing_key
-                    if response_signing_algorithm == "hmac-sha256"
-                    else None,
-                    signing_private_key=str(response_signing_key)
-                    if response_signing_algorithm == "ed25519" and response_signing_key
-                    else None,
+                    signing_key=(
+                        response_signing_key
+                        if response_signing_algorithm == "hmac-sha256"
+                        else None
+                    ),
+                    signing_private_key=(
+                        str(response_signing_key)
+                        if response_signing_algorithm == "ed25519" and response_signing_key
+                        else None
+                    ),
                     signing_key_id=resolved_config.signing_key_id,
                     signing_algorithm=response_signing_algorithm,
                     expose_internal_errors=resolved_config.expose_internal_errors,
@@ -168,5 +180,6 @@ def create_node_app(
                 status="error",
             )
             raise_http_exception(exc)
+            # raise_http_exception is NoReturn — execution never reaches here
 
     return app
