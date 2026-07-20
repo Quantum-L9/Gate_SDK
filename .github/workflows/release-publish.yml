@@ -168,7 +168,7 @@ jobs:
 # ─────────────────────────────────────────────────────────────────────────────
   build:
     name: gate-4-build
-    needs: dep-audit
+    needs: [dep-audit, verify-tag]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -203,7 +203,7 @@ jobs:
 # ─────────────────────────────────────────────────────────────────────────────
   sbom:
     name: gate-5-sbom
-    needs: build
+    needs: [build, verify-tag]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -224,7 +224,7 @@ jobs:
         run: |
           cyclonedx-py environment \
             --output-format json \
-            --outfile sbom-${{ needs.verify-tag.outputs.version }}.cdx.json
+            --output-file sbom-${{ needs.verify-tag.outputs.version }}.cdx.json
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v7
@@ -239,7 +239,7 @@ jobs:
 # ─────────────────────────────────────────────────────────────────────────────
   publish:
     name: gate-6-pypi-publish
-    needs: [build, sbom]
+    needs: [build, sbom, verify-tag]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi-release
