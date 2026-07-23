@@ -1,0 +1,75 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# L9 SDK contract check
+#
+# Provisions the immutable l9-ci-sdk pinned by Core's provision-sdk action and
+# verifies its public CLI contract. Mirrors Core's own sdk-contract-check.yml
+# so this repo detects SDK-pin drift (or a broken SDK CLI) on its own PRs
+# rather than only discovering it when an analysis workflow fails mid-pipeline.
+#
+# The provision-sdk action fails closed if the requested revision is not on the
+# SDK compatibility allowlist, so this doubles as an allowlist smoke test.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: l9-sdk-contract-check
+
+on:
+  pull_request:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: l9-sdk-contract-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Must match the SDK revision pinned by Core's provision-sdk default at the
+  # Core ref used across the l9-analysis workflows.
+  EXPECTED_SDK_REVISION: "6368ba17a98231d461a13b71e149e114ad766834"
+  EXPECTED_CONTRACT: "l9.integration-contract/v1"
+
+jobs:
+  sdk-contract:
+    name: Provision + verify SDK contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable event revision
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin \
+            "https://x-access-token:${TOKEN}@github.com/${REPOSITORY}.git"
+          git -c protocol.version=2 fetch --depth=1 origin "${REVISION}"
+          git checkout --detach FETCH_HEAD
+          git remote set-url origin "https://github.com/${REPOSITORY}.git"
+
+      - id: sdk
+        name: Provision immutable SDK (Core)
+        uses: Quantum-L9/l9-ci-core/.github/actions/provision-sdk@d2c2cd7f7251632825c53b8ed31570ba5d8add26
+        with:
+          sdk-source: git
+          sdk-repository: https://github.com/Quantum-L9/l9-ci-sdk.git
+          sdk-revision: 6368ba17a98231d461a13b71e149e114ad766834
+
+      - name: Verify emitted contract
+        env:
+          SDK_EXECUTABLE: ${{ steps.sdk.outputs.executable }}
+          SDK_REVISION: ${{ steps.sdk.outputs.sdk-revision }}
+          SDK_CONTRACT: ${{ steps.sdk.outputs.contract }}
+        run: |
+          set -euo pipefail
+          test -x "${SDK_EXECUTABLE}"
+          test "${SDK_REVISION}" = "${EXPECTED_SDK_REVISION}"
+          test "${SDK_CONTRACT}" = "${EXPECTED_CONTRACT}"
+          "${SDK_EXECUTABLE}" --help
+          echo "✓ SDK contract verified: revision=${SDK_REVISION} contract=${SDK_CONTRACT}"

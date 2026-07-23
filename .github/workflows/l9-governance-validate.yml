@@ -1,0 +1,58 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# L9 Governance validation
+#
+# Validates this repo's CI governance instantiation pack (.github/governance/)
+# against Core's Phase 3 rules using the validate-governance composite action.
+# It checks every supported profile/provider combination — catching malformed
+# or drifted governance files before they reach the analysis workflows.
+#
+# Scoped to governance-file changes (plus manual dispatch) to keep it cheap.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: l9-governance-validate
+
+on:
+  pull_request:
+    paths:
+      - ".github/governance/**"
+      - ".github/workflows/l9-governance-validate.yml"
+  push:
+    branches: ["main", "master"]
+    paths:
+      - ".github/governance/**"
+      - ".github/workflows/l9-governance-validate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: l9-governance-validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate governance pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable event revision
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin \
+            "https://x-access-token:${TOKEN}@github.com/${REPOSITORY}.git"
+          git -c protocol.version=2 fetch --depth=1 origin "${REVISION}"
+          git checkout --detach FETCH_HEAD
+          git remote set-url origin "https://github.com/${REPOSITORY}.git"
+
+      - name: Validate governance documents (Core)
+        uses: Quantum-L9/l9-ci-core/.github/actions/validate-governance@d2c2cd7f7251632825c53b8ed31570ba5d8add26
+        with:
+          governance-root: .github/governance

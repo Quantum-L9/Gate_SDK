@@ -1,0 +1,40 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# L9 Analysis — release (release profile)
+#
+# Thin wrapper around the shared engine (_l9-analysis.yml). Runs the governed
+# Semgrep pipeline on release tag pushes under the release governance profile
+# (ci_deep, blocking — see .github/governance/execution-profiles.yaml).
+#
+# Triggers match release's allowed_events: push (tags) + workflow_dispatch.
+# A tag push is a `push` event, which the resolver accepts for this profile.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: l9-analysis-release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+
+concurrency:
+  group: l9-analysis-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  analysis:
+    name: L9 analysis (release)
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    uses: ./.github/workflows/_l9-analysis.yml
+    with:
+      profile: release
+      matrix-id: release-semgrep

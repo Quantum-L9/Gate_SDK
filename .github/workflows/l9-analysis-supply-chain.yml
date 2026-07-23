@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# L9 Analysis — supply chain (supply_chain profile)
+#
+# Thin wrapper around the shared engine (_l9-analysis.yml). Runs the governed
+# Semgrep pipeline on a weekly schedule under the supply_chain governance
+# profile (ci_deep, blocking — see .github/governance/execution-profiles.yaml).
+#
+# Triggers match supply_chain's allowed_events: schedule + workflow_dispatch.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: l9-analysis-supply-chain
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+
+concurrency:
+  group: l9-analysis-supply-chain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: L9 analysis (supply_chain)
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    uses: ./.github/workflows/_l9-analysis.yml
+    with:
+      profile: supply_chain
+      matrix-id: supply-chain-semgrep

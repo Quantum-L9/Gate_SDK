@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# L9 Analysis — nightly (nightly profile)
+#
+# Thin wrapper around the shared engine (_l9-analysis.yml). Runs the governed
+# Semgrep pipeline on a daily schedule under the nightly governance profile
+# (ci_deep, advisory by default — see .github/governance/execution-profiles.yaml).
+#
+# Triggers match nightly's allowed_events: schedule + workflow_dispatch.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: l9-analysis-nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+
+concurrency:
+  group: l9-analysis-nightly-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: L9 analysis (nightly)
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    uses: ./.github/workflows/_l9-analysis.yml
+    with:
+      profile: nightly
+      matrix-id: nightly-semgrep
