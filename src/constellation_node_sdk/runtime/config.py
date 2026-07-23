@@ -64,8 +64,14 @@ class NodeRuntimeConfig(BaseModel):
     max_packet_bytes: int = Field(default=262_144, ge=1024)
     max_hop_depth: int = Field(default=64, ge=1)
     max_delegation_depth: int = Field(default=8, ge=1)
-    max_attachments: int = Field(default=32, ge=0)
-    max_attachment_size_bytes: int = Field(default=10_485_760, ge=0)
+    # Attachments are disabled by default. The previous defaults (max_attachments=32,
+    # max_attachment_size_bytes=10 MiB) were mutually inconsistent with
+    # max_packet_bytes=256 KiB and the empty attachment_allowed_schemes tuple:
+    # constructing the model without explicit sizes raised ValidationError at import
+    # time in every consumer. Attachments are opt-in: set max_attachments > 0,
+    # a size ceiling <= max_packet_bytes, and at least one allowed scheme.
+    max_attachments: int = Field(default=0, ge=0)
+    max_attachment_size_bytes: int = Field(default=0, ge=0)
     attachment_allowed_schemes: tuple[str, ...] = ()
     allow_private_attachment_hosts: bool = False
 
@@ -262,8 +268,8 @@ def get_runtime_config() -> NodeRuntimeConfig:
         max_packet_bytes=int(os.getenv("L9_MAX_PACKET_BYTES", "262144")),
         max_hop_depth=int(os.getenv("L9_MAX_HOP_DEPTH", "64")),
         max_delegation_depth=int(os.getenv("L9_MAX_DELEGATION_DEPTH", "8")),
-        max_attachments=int(os.getenv("L9_MAX_ATTACHMENTS", "32")),
-        max_attachment_size_bytes=int(os.getenv("L9_MAX_ATTACHMENT_SIZE_BYTES", "10485760")),
+        max_attachments=int(os.getenv("L9_MAX_ATTACHMENTS", "0")),
+        max_attachment_size_bytes=int(os.getenv("L9_MAX_ATTACHMENT_SIZE_BYTES", "0")),
         attachment_allowed_schemes=_env_tuple("L9_ATTACHMENT_ALLOWED_SCHEMES"),
         allow_private_attachment_hosts=_env_bool("L9_ALLOW_PRIVATE_ATTACHMENT_HOSTS", False),
         replay_enabled=_env_bool("L9_REPLAY_ENABLED", True),
