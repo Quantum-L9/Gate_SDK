@@ -44,9 +44,7 @@ class TestDefaultConsistency:
         config = _minimal()
         assert config.max_attachment_size_bytes <= config.max_packet_bytes
 
-    def test_get_runtime_config_env_defaults_succeed(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_get_runtime_config_env_defaults_succeed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """get_runtime_config() with a clean environment must not raise."""
         for var in (
             "L9_MAX_ATTACHMENTS",
