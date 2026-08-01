@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any, Literal
@@ -16,7 +17,18 @@ from .errors import raise_http_exception
 from .execution import create_error_transport_packet, execute_transport_packet
 from .inbound_policy import validate_execute_ingress_packet, validate_relay_ingress_packet
 from .lifecycle import LifecycleHook, NoOpLifecycle
-from .observability import configure_logging, metrics_response, record_request, set_readiness
+from .observability import (
+    RESULT_ACCEPTED,
+    RESULT_FAILED,
+    RESULT_REJECTED,
+    RESULT_RETURNED_ERROR_PACKET,
+    ExecutionTimer,
+    bound_result,
+    configure_logging,
+    metrics_response,
+    record_execution,
+    set_readiness,
+)
 from .preflight import run_preflight
 
 
@@ -76,10 +88,19 @@ async def _handle_transport_request(
     validate_ingress: Callable[[TransportPacket], None],
 ) -> JSONResponse:
     packet: TransportPacket | None = None
+    timer = ExecutionTimer()
+    request_bytes: int | None = None
     try:
-        body = await request.json()
+        raw = await request.body()
+        request_bytes = len(raw) if raw else None
+        body = json.loads(raw.decode("utf-8")) if raw else None
     except Exception as exc:
-        record_request(config=resolved_config, action="unknown", status="invalid_json")
+        record_execution(
+            config=resolved_config,
+            result=RESULT_REJECTED,
+            duration_seconds=timer.seconds(),
+            request_bytes=request_bytes,
+        )
         raise HTTPException(status_code=400, detail=f"invalid JSON body: {exc}") from exc
 
     try:
@@ -129,11 +150,23 @@ async def _handle_transport_request(
             allow_private_attachment_hosts=resolved_config.allow_private_attachment_hosts,
         )
 
+        content = response_packet.model_dump_json_dict()
         status = str(response_packet.payload.get("status", "completed")).strip().lower()
-        record_request(config=resolved_config, action=packet.header.action, status=status)
-        return JSONResponse(content=response_packet.model_dump_json_dict())
+        hop_len = len(packet.hop_trace) if packet.hop_trace is not None else 0
+        response_bytes = len(json.dumps(content, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+        record_execution(
+            config=resolved_config,
+            result=bound_result(status) if status else RESULT_ACCEPTED,
+            duration_seconds=timer.seconds(),
+            request_bytes=request_bytes,
+            response_bytes=response_bytes,
+            hop_count=hop_len,
+            retry_count=packet.header.retry_count,
+        )
+        return JSONResponse(content=content)
 
     except Exception as exc:
+        hop_len = len(packet.hop_trace) if packet is not None and packet.hop_trace is not None else None
         if packet is not None and resolved_config.return_transport_errors:
             response_signing_key, response_signing_algorithm = _key_material_from_config(
                 resolved_config
@@ -154,17 +187,24 @@ async def _handle_transport_request(
                 signing_algorithm=response_signing_algorithm,
                 expose_internal_errors=resolved_config.expose_internal_errors,
             )
-            record_request(
+            content = failure_packet.model_dump_json_dict()
+            response_bytes = len(json.dumps(content, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+            record_execution(
                 config=resolved_config,
-                action=packet.header.action,
-                status="failed",
+                result=RESULT_RETURNED_ERROR_PACKET,
+                duration_seconds=timer.seconds(),
+                request_bytes=request_bytes,
+                response_bytes=response_bytes,
+                hop_count=hop_len,
             )
-            return JSONResponse(content=failure_packet.model_dump_json_dict())
+            return JSONResponse(content=content)
 
-        record_request(
+        record_execution(
             config=resolved_config,
-            action="unknown" if packet is None else packet.header.action,
-            status="error",
+            result=RESULT_FAILED,
+            duration_seconds=timer.seconds(),
+            request_bytes=request_bytes,
+            hop_count=hop_len,
         )
         raise_http_exception(exc)
 
