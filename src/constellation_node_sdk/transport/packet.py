@@ -137,7 +137,10 @@ class TransportPacket(BaseModel):
         new_delegation_chain = self.delegation_chain + (
             (delegation_link,) if delegation_link is not None else ()
         )
-        new_hop_trace = self.hop_trace + ((hop,) if hop is not None else ())
+        # hop_trace is per-packet observational state. Parent hops keep the
+        # parent's packet_id / transport_hash binding; carrying them across
+        # derive() fails validate_hop_trace. Lineage tracks parentage.
+        new_hop_trace = (hop,) if hop is not None else ()
         new_lineage = TransportLineage(
             parent_id=self.header.packet_id,
             root_id=self.lineage.root_id,

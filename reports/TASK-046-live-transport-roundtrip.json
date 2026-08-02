@@ -1,0 +1,87 @@
+{
+  "content_digest": "sha256:819de0dde2e1ad66ef0fa0f00a48350f7d8351c405def83c50aa093cde730235",
+  "converge": {
+    "action": "converge",
+    "destination_node": "gate",
+    "hop_count": 1,
+    "hop_packet_ids_match_header": true,
+    "mapper_ok": true,
+    "packet_type": "failure",
+    "payload_error": "ValueError",
+    "payload_message": "ValueError",
+    "payload_status": "failed",
+    "semantic_note": "EIE handler may still fail ValueError on payload shape; transport path is real",
+    "source_node": "enrichment-engine"
+  },
+  "match": {
+    "action": "match",
+    "destination_node": "gate",
+    "hop_count": 1,
+    "hop_packet_ids_match_header": true,
+    "mapper_ok": true,
+    "packet_type": "failure",
+    "payload_error": "ValidationError",
+    "payload_message": "No candidate entity for direction 'intake_to_buyer'",
+    "payload_status": "failed",
+    "semantic_note": "CEG may return failure/empty if graph sparse; transport path is real",
+    "source_node": "ceg-real"
+  },
+  "not_claimed": [
+    "LIVE_INTEGRATION_PASS full semantic CEG/EIE graph enrichment",
+    "PROMOTION_APPROVED"
+  ],
+  "observed_at": "2026-08-02T16:42:51.666069+00:00",
+  "registry": {
+    "ceg-real": {
+      "internal_url": "http://127.0.0.1:8000",
+      "metadata": {
+        "owner": "ceg",
+        "proof": "real-sdk-aligned-utc-hash"
+      },
+      "supported_actions": [
+        "match",
+        "sync",
+        "admin",
+        "outcomes",
+        "resolve"
+      ]
+    },
+    "enrichment-engine": {
+      "internal_url": "http://127.0.0.1:8001",
+      "metadata": {
+        "owner": "eie",
+        "proof": "real-sdk-aligned-utc-hash"
+      },
+      "supported_actions": [
+        "converge",
+        "graph-inference-result"
+      ]
+    }
+  },
+  "schema": "l9.wave7.live_integration_evidence.v1",
+  "sdk_fixes": [
+    {
+      "change": "canonicalize datetimes as UTC (not local TZ) so transport_hash is host-invariant",
+      "file": "src/constellation_node_sdk/transport/hashing.py"
+    },
+    {
+      "change": "derive() resets hop_trace; lineage carries parentage",
+      "file": "src/constellation_node_sdk/transport/packet.py"
+    }
+  ],
+  "stack": {
+    "ceg": "http://127.0.0.1:8000 (ceg-real)",
+    "eie": "http://127.0.0.1:8001 (enrichment-engine)",
+    "gate": "http://127.0.0.1:9000",
+    "stub_ports_9101_9102": "free",
+    "stubs_present": false
+  },
+  "task_id": "TASK-046",
+  "tests": {
+    "PLASTICOS_GATE_LIVE_URL": "http://127.0.0.1:9000",
+    "command": "pytest tests/integration/test_gate_external_authority_e2e.py",
+    "result": "3 passed"
+  },
+  "title": "Gate\u2194CEG\u2194EIE live e2e without stubs (SDK hash+hop fixes)",
+  "verdict": "LIVE_TRANSPORT_ROUNDTRIP_PASS"
+}

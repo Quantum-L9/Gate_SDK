@@ -43,6 +43,32 @@ def test_validate_parent_child_lineage_accepts_valid_child() -> None:
     validate_parent_child_lineage(parent, child)
 
 
+def test_derive_resets_hop_trace_so_child_remains_valid() -> None:
+    from constellation_node_sdk.transport.hop_trace import make_ingress_hop, validate_hop_trace
+
+    parent = create_transport_packet(
+        action="match",
+        payload={"q": 1},
+        tenant="tenant-a",
+        destination_node="gate",
+        source_node="client",
+        reply_to="client",
+    )
+    parent = parent.with_hop(make_ingress_hop(packet=parent, node="gate", action="match"))
+    assert len(parent.hop_trace) == 1
+    validate_hop_trace(parent)
+
+    child = parent.derive(
+        action="match",
+        source_node="gate",
+        destination_node="ceg-real",
+        reply_to="gate",
+        payload={"q": 1},
+    )
+    assert child.hop_trace == ()
+    validate_hop_trace(child)
+
+
 def test_validate_parent_child_lineage_rejects_invalid_child() -> None:
     parent = create_transport_packet(
         action="workflow.execute",

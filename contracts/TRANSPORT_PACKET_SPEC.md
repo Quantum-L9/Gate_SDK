@@ -21,6 +21,11 @@ Use `derive()` when:
 - provenance changes
 - workflow steps create new semantic work
 
+`derive()` mints a new `packet_id` and **resets `hop_trace`**. Parentage
+is recorded in `lineage` (`parent_id` / `root_id` / `generation`). Do not
+carry parent hops onto the child — hop entries are bound to the current
+packet's `packet_id` and `transport_hash`.
+
 ### Observational hops
 Use `with_hop()` when:
 - packet enters Gate
@@ -53,6 +58,11 @@ Canonical SHA-256 hash of the stable packet core:
 - payload_hash
 
 `hop_trace` is intentionally excluded.
+
+Datetime fields in the hash material are always normalized to UTC
+(`...Z`). Naive datetimes are treated as UTC. Local-timezone conversion
+is forbidden — it made `transport_hash` host-dependent (e.g. macOS EDT
+vs container UTC) and broke Gate→worker integrity checks.
 
 ## Signatures
 
