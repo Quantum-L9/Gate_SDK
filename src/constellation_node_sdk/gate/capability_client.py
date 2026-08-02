@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 
 import httpx
 
@@ -12,11 +11,11 @@ from .config import GateClientConfig
 from .errors import GateClientError, GateResponseError
 
 
-class CapabilityCacheEntry:
+class CapabilityCacheEntry[T]:
     __slots__ = ("etag", "expires_at", "payload")
 
-    def __init__(self, *, payload: Any, etag: str, expires_at: float) -> None:
-        self.payload = payload
+    def __init__(self, *, payload: T, etag: str, expires_at: float) -> None:
+        self.payload: T = payload
         self.etag = etag
         self.expires_at = expires_at
 
@@ -36,8 +35,8 @@ class GateCapabilityClient:
         self._config = config
         self._admin_token = admin_token.strip() if admin_token else None
         self._cache_ttl_seconds = cache_ttl_seconds
-        self._list_cache: CapabilityCacheEntry | None = None
-        self._action_cache: dict[str, CapabilityCacheEntry] = {}
+        self._list_cache: CapabilityCacheEntry[CapabilityListResponse] | None = None
+        self._action_cache: dict[str, CapabilityCacheEntry[CapabilityDescriptor]] = {}
 
     @property
     def gate_url(self) -> str:
@@ -85,7 +84,7 @@ class GateCapabilityClient:
             ) from exc
 
         etag = response.headers.get("etag") or parsed.etag
-        self._list_cache = CapabilityCacheEntry(
+        self._list_cache = CapabilityCacheEntry[CapabilityListResponse](
             payload=parsed,
             etag=etag,
             expires_at=now + self._cache_ttl_seconds,
@@ -135,7 +134,7 @@ class GateCapabilityClient:
             ) from exc
 
         etag = response.headers.get("etag") or f'W/"{normalized}"'
-        self._action_cache[normalized] = CapabilityCacheEntry(
+        self._action_cache[normalized] = CapabilityCacheEntry[CapabilityDescriptor](
             payload=parsed,
             etag=etag,
             expires_at=now + self._cache_ttl_seconds,
