@@ -153,7 +153,9 @@ async def _handle_transport_request(
         content = response_packet.model_dump_json_dict()
         status = str(response_packet.payload.get("status", "completed")).strip().lower()
         hop_len = len(packet.hop_trace) if packet.hop_trace is not None else 0
-        response_bytes = len(json.dumps(content, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+        response_bytes = len(
+            json.dumps(content, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
         record_execution(
             config=resolved_config,
             result=bound_result(status) if status else RESULT_ACCEPTED,
@@ -166,7 +168,9 @@ async def _handle_transport_request(
         return JSONResponse(content=content)
 
     except Exception as exc:
-        hop_len = len(packet.hop_trace) if packet is not None and packet.hop_trace is not None else None
+        hop_len = (
+            len(packet.hop_trace) if packet is not None and packet.hop_trace is not None else None
+        )
         if packet is not None and resolved_config.return_transport_errors:
             response_signing_key, response_signing_algorithm = _key_material_from_config(
                 resolved_config
@@ -188,7 +192,9 @@ async def _handle_transport_request(
                 expose_internal_errors=resolved_config.expose_internal_errors,
             )
             content = failure_packet.model_dump_json_dict()
-            response_bytes = len(json.dumps(content, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+            response_bytes = len(
+                json.dumps(content, separators=(",", ":"), sort_keys=True).encode("utf-8")
+            )
             record_execution(
                 config=resolved_config,
                 result=RESULT_RETURNED_ERROR_PACKET,

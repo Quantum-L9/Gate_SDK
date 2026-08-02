@@ -1,4 +1,5 @@
 """Bounded observability: closed labels only; packet behavior unchanged."""
+
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
@@ -93,10 +94,7 @@ def test_record_execution_histograms_and_bounded_labels() -> None:
         hop_count=2,
         retry_count=1,
     )
-    assert (
-        REQUESTS_TOTAL.labels(service=cfg.service_name, result=RESULT_ACCEPTED)._value.get()
-        >= 1
-    )
+    assert REQUESTS_TOTAL.labels(service=cfg.service_name, result=RESULT_ACCEPTED)._value.get() >= 1
     snap = bounded_label_snapshot()
     assert set(snap["requests_total.result"]) == set(BOUNDED_RESULTS)
     assert set(snap["payload_bytes.direction"]) == {"request", "response"}

@@ -2,6 +2,7 @@
 
 Labels are closed enums only — never raw action names or free-form strings.
 """
+
 from __future__ import annotations
 
 import logging
