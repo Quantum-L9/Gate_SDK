@@ -169,7 +169,7 @@ async def _handle_transport_request(
 
     except Exception as exc:
         hop_len = (
-            len(packet.hop_trace) if packet is not None and packet.hop_trace is not None else None
+            len(packet.hop_trace) if packet is not None and packet.hop_trace is not None else 0
         )
         if packet is not None and resolved_config.return_transport_errors:
             response_signing_key, response_signing_algorithm = _key_material_from_config(
