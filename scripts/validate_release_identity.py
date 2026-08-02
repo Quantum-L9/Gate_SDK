@@ -3,6 +3,7 @@
 
 Fails closed when tag, package version, and claimed release identity disagree.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,9 +70,7 @@ def validate(repo: Path, ledger_path: Path) -> list[str]:
 
     head = _git(repo, "rev-parse", "HEAD")
     if ledger.get("claim_head_is_release") and head != expected_sha:
-        errors.append(
-            f"ledger claims HEAD is release but HEAD={head} release={expected_sha}"
-        )
+        errors.append(f"ledger claims HEAD is release but HEAD={head} release={expected_sha}")
 
     # Consumer pin must be the immutable release commit.
     pin = ledger.get("consumer_pin", {})

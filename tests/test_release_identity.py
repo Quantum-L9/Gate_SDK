@@ -1,4 +1,5 @@
 """Release identity ledger must agree with tag + package version."""
+
 from __future__ import annotations
 
 import subprocess
