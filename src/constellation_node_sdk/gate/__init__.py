@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from constellation_node_sdk.gate.capabilities import (
+    CapabilityDescriptor,
+    CapabilityListResponse,
+)
+from constellation_node_sdk.gate.capability_client import GateCapabilityClient
 from constellation_node_sdk.gate.client import GateClient
 from constellation_node_sdk.gate.config import (
     GateClientConfig,
@@ -27,6 +32,9 @@ from constellation_node_sdk.gate.registration import (
 )
 
 __all__ = [
+    "CapabilityDescriptor",
+    "CapabilityListResponse",
+    "GateCapabilityClient",
     "GateClient",
     "GateClientConfig",
     "GateClientError",
