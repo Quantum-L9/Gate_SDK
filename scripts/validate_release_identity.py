@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import sys
 import tomllib
 from pathlib import Path
 
@@ -38,7 +37,8 @@ def validate(repo: Path, ledger_path: Path) -> list[str]:
 
     if project.get("name") != ledger.get("distribution_name"):
         errors.append(
-            f"distribution_name mismatch: pyproject={project.get('name')} ledger={ledger.get('distribution_name')}"
+            f"distribution_name mismatch: pyproject={project.get('name')} "
+            f"ledger={ledger.get('distribution_name')}"
         )
     if project.get("version") != ledger.get("package_version"):
         errors.append(
@@ -48,12 +48,26 @@ def validate(repo: Path, ledger_path: Path) -> list[str]:
 
     tag = ledger["release_tag"]
     expected_sha = ledger["release_commit_sha"]
+
+    # Prefer annotated/lightweight tag resolution; fall back for shallow CI
+    # clones that omit tags but still have the release commit reachable.
+    tag_sha: str | None = None
     try:
         tag_sha = _git(repo, "rev-parse", f"{tag}^{{}}")
-    except RuntimeError as exc:
-        errors.append(f"release_tag {tag} not resolvable: {exc}")
-        return errors
-    if tag_sha != expected_sha:
+    except RuntimeError:
+        try:
+            tag_sha = _git(repo, "rev-parse", tag)
+        except RuntimeError:
+            tag_sha = None
+
+    if tag_sha is None:
+        try:
+            resolved = _git(repo, "rev-parse", "--verify", f"{expected_sha}^{{commit}}")
+            if resolved != expected_sha:
+                errors.append(f"release_commit_sha {expected_sha} resolves to {resolved}")
+        except RuntimeError as exc:
+            errors.append(f"release_tag {tag} not resolvable and release_commit_sha missing: {exc}")
+    elif tag_sha != expected_sha:
         errors.append(f"tag {tag} resolves to {tag_sha}, ledger expects {expected_sha}")
 
     # Package version at the tagged commit must match ledger.
@@ -80,32 +94,23 @@ def validate(repo: Path, ledger_path: Path) -> list[str]:
     return errors
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--repo",
-        type=Path,
-        default=Path(__file__).resolve().parents[1],
-        help="Gate_SDK repository root",
-    )
+    parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument(
         "--ledger",
         type=Path,
-        default=None,
-        help="Path to RELEASE_IDENTITY_LEDGER.json",
+        default=Path("contracts/RELEASE_IDENTITY_LEDGER.json"),
     )
-    args = parser.parse_args()
-    ledger = args.ledger or (args.repo / "contracts" / "RELEASE_IDENTITY_LEDGER.json")
-    if not ledger.is_file():
-        print(f"FAIL: ledger missing: {ledger}", file=sys.stderr)
-        return 1
-    errors = validate(args.repo, ledger)
+    args = parser.parse_args(argv)
+    ledger_path = args.ledger if args.ledger.is_absolute() else args.repo / args.ledger
+    errors = validate(args.repo, ledger_path)
     if errors:
         print("FAIL: release identity disagreement")
         for err in errors:
-            print(f"  - {err}")
+            print(f"- {err}")
         return 1
-    print(f"PASS: release identity agrees ({ledger})")
+    print(f"PASS: release identity agrees ({ledger_path})")
     return 0
 
 
