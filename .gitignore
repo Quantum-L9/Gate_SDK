@@ -17,3 +17,6 @@ build/
 
 # OS / editor
 .DS_Store
+
+# Local work in progress (never publish)
+/WIP/

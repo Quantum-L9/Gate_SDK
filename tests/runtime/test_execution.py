@@ -48,9 +48,10 @@ async def test_execute_transport_packet_runs_handler_and_returns_response() -> N
     assert response.payload["status"] == "completed"
     assert response.payload["score"] == 91
     assert response.payload["entity_id"] == "42"
-    assert len(response.hop_trace) == 2
-    assert response.hop_trace[0].direction == "execution"
-    assert response.hop_trace[1].direction == "response"
+    # derive() resets hop_trace; only the response hop binds to the child packet_id
+    assert len(response.hop_trace) == 1
+    assert response.hop_trace[0].direction == "response"
+    assert response.hop_trace[0].packet_id == response.header.packet_id
 
 
 @pytest.mark.asyncio

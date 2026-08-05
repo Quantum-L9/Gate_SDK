@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -22,9 +22,11 @@ def _canonicalize(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_canonicalize(v) for v in value]
     if isinstance(value, datetime):
+        # Always UTC. Local-TZ attach/convert made transport_hash machine-dependent
+        # (Mac EDT ≠ Docker UTC), breaking Gate→CEG/EIE integrity checks.
         if value.tzinfo is None:
-            value = value.replace(tzinfo=datetime.now().astimezone().tzinfo)
-        return value.astimezone().isoformat().replace("+00:00", "Z")
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, bytes):
