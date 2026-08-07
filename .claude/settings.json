@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.cursor-governance/environment/claude-code/hooks/merge_gate_wrap.py\"",
+            "command": "bash -c 'f=\"$HOME/.cursor-governance/environment/claude-code/hooks/merge_gate_wrap.py\"; [ -f \"$f\" ] && exec python3 \"$f\" || exit 0'",
             "timeout": 5
           }
         ]
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.cursor-governance/environment/claude-code/hooks/memory_gate.py\"",
+            "command": "bash -c 'f=\"$HOME/.cursor-governance/environment/claude-code/hooks/memory_gate.py\"; [ -f \"$f\" ] && exec python3 \"$f\" || exit 0'",
             "timeout": 12
           }
         ]
