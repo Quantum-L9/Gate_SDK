@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_claude_governance.sh\"",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.cursor-governance/environment/claude-code/hooks/memory_prefetch.py\"",
+            "timeout": 25
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.cursor-governance/environment/claude-code/hooks/memory_writeback.py\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.cursor-governance/environment/claude-code/hooks/user_prompt_skill_router.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.cursor-governance/environment/claude-code/hooks/skill_usage_logger.py\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|mcp__github__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.cursor-governance/environment/claude-code/hooks/merge_gate_wrap.py\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash|mcp__github__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.cursor-governance/environment/claude-code/hooks/memory_gate.py\"",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.cursor-governance/environment/claude-code/hooks/skill_usage_logger.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git fetch:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git worktree:*)",
+      "Bash(git add --:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run watch:*)",
+      "Bash(gh run rerun:*)",
+      "Bash(make claude-env:*)",
+      "mcp__github__pull_request_read",
+      "mcp__github__get_check_run",
+      "mcp__github__actions_get",
+      "mcp__github__actions_list",
+      "mcp__github__get_job_logs",
+      "mcp__github__get_commit",
+      "mcp__github__list_commits",
+      "mcp__github__list_pull_requests",
+      "mcp__github__search_pull_requests",
+      "mcp__github__get_file_contents",
+      "mcp__github__list_branches",
+      "mcp__github__list_tags",
+      "mcp__github__list_releases",
+      "mcp__github__get_latest_release",
+      "mcp__github__get_me",
+      "mcp__github__issue_read",
+      "mcp__github__list_issues",
+      "mcp__github__search_issues",
+      "mcp__github__search_code",
+      "mcp__github__subscribe_pr_activity",
+      "mcp__github__unsubscribe_pr_activity",
+      "mcp__github__create_pull_request",
+      "mcp__github__update_pull_request"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.mcp.json)",
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(gh pr merge --admin:*)"
+    ]
+  },
+  "env": {
+    "L9_GOVERNANCE_SURFACE": "claude-code",
+    "L9_AUTONOMY_ENABLED": "true",
+    "L9_AUTONOMY_AUTHORITY": "A4_CAMPAIGN_BOUNDED_EXTERNAL_WRITE",
+    "L9_AUTONOMY_MATURITY": "M4_ASSURANCE_GOVERNED",
+    "L9_AUTONOMY_PROFILE": "pr-convergence",
+    "L9_AUTONOMY_AUTONOMOUS_MERGE": "false",
+    "L9_AUTONOMY_REMEDIATION_SKILL": "l9-pr-remediation",
+    "L9_AUTONOMY_MAX_PARALLEL": "4",
+    "L9_AUTONOMY_MAX_MUTATION_LANES": "2",
+    "L9_AUTONOMY_STATE_DIR": ".l9/autonomy",
+    "L9_DISCOVER_BEFORE_ASK": "true",
+    "L9_REQUIRE_EXACT_SHA_GREEN": "true",
+    "L9_PROACTIVE_SKILLS": "true",
+    "L9_SKILL_USAGE_LOGGING": "true"
+  },
+  "skillOverrides": {
+    "l9-bounded-autonomy": "user-invocable-only",
+    "l9-chat-extraction": "user-invocable-only",
+    "l9-ci-ops": "user-invocable-only",
+    "l9-cli-optimization": "user-invocable-only",
+    "l9-code-maintenance": "user-invocable-only",
+    "l9-component-verification": "user-invocable-only",
+    "l9-dag-authoring": "user-invocable-only",
+    "l9-e2e-blocker-resolution": "user-invocable-only",
+    "l9-end-session": "user-invocable-only",
+    "l9-forge": "user-invocable-only",
+    "l9-governance-symlinks": "user-invocable-only",
+    "l9-governance-wiring": "user-invocable-only",
+    "l9-harvest-pipeline": "user-invocable-only",
+    "l9-inspect": "user-invocable-only",
+    "l9-kubernetes-deploying": "user-invocable-only",
+    "l9-pr-remediation": "user-invocable-only",
+    "l9-python-tdd-with-uv": "user-invocable-only",
+    "l9-repo-index": "user-invocable-only",
+    "l9-repository-renovation": "user-invocable-only",
+    "l9-setting-up-terraform": "user-invocable-only",
+    "l9-ui-operator": "user-invocable-only",
+    "l9-update-command": "user-invocable-only"
+  }
+}
