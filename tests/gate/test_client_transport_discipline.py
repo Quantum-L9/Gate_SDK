@@ -143,10 +143,12 @@ async def test_gate_client_does_not_retry_a_transport_failure(
         raise httpx.ConnectError("gate unreachable", request=request)
 
     transport = RecordingTransport(_fail)
+    packet = _node_packet(tenant, domain_payload)
 
     with patched_transport(transport):
+        client = GateClient(_gate_config())
         with pytest.raises(httpx.ConnectError):
-            await GateClient(_gate_config()).send_to_gate(_node_packet(tenant, domain_payload))
+            await client.send_to_gate(packet)
 
     assert len(transport.requests) == 1
 
@@ -159,10 +161,12 @@ async def test_gate_client_does_not_retry_a_server_error(
     transport = RecordingTransport(
         lambda request, _attempt: httpx.Response(status_code=503, json={}, request=request)
     )
+    packet = _node_packet(tenant, domain_payload)
 
     with patched_transport(transport):
+        client = GateClient(_gate_config())
         with pytest.raises(httpx.HTTPStatusError):
-            await GateClient(_gate_config()).send_to_gate(_node_packet(tenant, domain_payload))
+            await client.send_to_gate(packet)
 
     assert len(transport.requests) == 1
 
@@ -181,8 +185,11 @@ async def test_gate_client_rejects_a_non_canonical_response_body(
         )
     )
 
+    packet = _node_packet(tenant, domain_payload)
+
     with patched_transport(transport):
+        client = GateClient(_gate_config())
         with pytest.raises(ValidationError):
-            await GateClient(_gate_config()).send_to_gate(_node_packet(tenant, domain_payload))
+            await client.send_to_gate(packet)
 
     assert len(transport.requests) == 1

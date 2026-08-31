@@ -204,8 +204,10 @@ async def test_runtime_does_not_retry_a_failing_handler(
         calls.append(1)
         raise RuntimeError("provider unavailable")
 
+    packet = _worker_packet(tenant, domain_payload)
+
     with pytest.raises(RuntimeError, match="provider unavailable"):
-        await _execute(_worker_packet(tenant, domain_payload))
+        await _execute(packet)
 
     assert len(calls) == 1
 
@@ -223,8 +225,10 @@ async def test_runtime_does_not_retry_a_timing_out_handler(
         await asyncio.sleep(30)
         return {"state": "completed"}
 
+    packet = _worker_packet(tenant, domain_payload, timeout_ms=100)
+
     with pytest.raises(TimeoutError):
-        await _execute(_worker_packet(tenant, domain_payload, timeout_ms=100))
+        await _execute(packet)
 
     assert len(calls) == 1
 
