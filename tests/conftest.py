@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import inspect
 import sys
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from constellation_node_sdk.gate.config import GateClientConfig
@@ -523,3 +526,99 @@ def restricted_packet(tenant: TenantContext) -> TransportPacket:
         }
     )
     return TransportPacket.model_validate(finalized)
+
+
+# ---------------------------------------------------------------------------
+# Gate HTTP transport stub
+# ---------------------------------------------------------------------------
+
+
+class RecordingTransport(httpx.AsyncBaseTransport):
+    """
+    An httpx transport that records every attempt.
+
+    Counting attempts is how a hidden retry layer is caught: absence of retry
+    code proves nothing, a request count of one proves the behavior.
+    """
+
+    def __init__(self, responder: Any) -> None:
+        self._responder = responder
+        self.requests: list[httpx.Request] = []
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        request.read()
+        self.requests.append(request)
+        result = self._responder(request, len(self.requests))
+        if inspect.isawaitable(result):
+            return await result
+        return result
+
+
+@pytest.fixture(scope="session")
+def route_gate_http() -> Any:
+    """
+    Route GateClient's outbound HTTP to a responder callable.
+
+    Yields a context manager taking ``responder(request, attempt_number)``,
+    which may be sync or async, and exposing the ``RecordingTransport`` so
+    tests can assert on attempt counts and on the exact bytes sent.
+    """
+
+    @contextmanager
+    def _route(responder: Any) -> Any:
+        transport = RecordingTransport(responder)
+        original = httpx.AsyncClient
+
+        class PatchedAsyncClient(httpx.AsyncClient):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                kwargs["transport"] = transport
+                super().__init__(*args, **kwargs)
+
+        httpx.AsyncClient = PatchedAsyncClient  # type: ignore[misc]
+        try:
+            yield transport
+        finally:
+            httpx.AsyncClient = original  # type: ignore[misc]
+
+    return _route
+
+
+# ---------------------------------------------------------------------------
+# Domain-neutral transport fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def domain_payload() -> dict[str, Any]:
+    """
+    An arbitrary application-domain payload, opaque to the SDK.
+
+    The shape is illustrative transport data only. The SDK must carry it
+    unchanged and must never interpret, rename, or supplement any key in it.
+    """
+    return {
+        "entity": {
+            "id": "res.partner:55",
+            "_odoo_entity_id": "res.partner:55",
+            "name": "Acme",
+            "website": None,
+        },
+        "object_type": "organization",
+        "objective": "enrich",
+        "max_variations": 5,
+    }
+
+
+@pytest.fixture()
+def domain_response_payload() -> dict[str, Any]:
+    """
+    An arbitrary application-domain response payload, opaque to the SDK.
+
+    The SDK must return it unchanged. In particular it must not translate
+    ``state`` to ``status`` or ``fields`` to ``final_fields``.
+    """
+    return {
+        "state": "completed",
+        "fields": {"website": "https://example.com", "employee_count": None},
+        "entity": {"id": "res.partner:55"},
+    }
