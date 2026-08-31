@@ -7,8 +7,27 @@ The SDK exists to ensure every Constellation node speaks the same protocol and o
 The SDK is deliberately opinionated:
 
 - one canonical transport type: `TransportPacket`
-- one canonical node egress path: `GateClient.send_to_gate()`
+- one canonical node egress path: `GateClient` — `execute()` for applications, `send_to_gate()` for packet-native callers
 - one canonical node runtime: `create_node_app()`
+
+The two client surfaces are one egress path, not two. `execute()` is a closure
+over the packet-native primitive: it builds the canonical root packet from
+business inputs and hands it to `send_to_gate()`. There is no second transport
+implementation, and no way for an application to reach a peer node through
+either.
+
+```text
+application            action, payload, tenant, operation id, one deadline
+      │
+      ▼
+GateClient.execute()   root packet · Gate destination · deadline · idempotency
+      │
+      ▼
+GateClient.send_to_gate()   validate · sign · HTTP · decode · validate · typed errors
+      │
+      ▼
+Gate
+```
 
 ## System model
 
