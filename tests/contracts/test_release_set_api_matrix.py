@@ -123,6 +123,54 @@ def test_consumed_model_keeps_its_fields(consumer: str, entry: dict[str, Any]) -
     assert not missing, f"{consumer} relies on {entry['symbol']} fields {missing}, now absent"
 
 
+PROVENANCE_REQUIRED_KEYS = ("repository", "head_sha", "access")
+
+
+@pytest.mark.parametrize("consumer", sorted(CONSUMERS))
+def test_every_consumer_records_where_its_entries_were_read(consumer: str) -> None:
+    """
+    A compatibility claim is only as good as the commit it was read from.
+
+    Without provenance this matrix can quietly certify the SDK against a
+    consumer revision nobody ships any more — which is exactly how it went
+    stale once, recording an Odoo that had not yet started sending
+    ``idempotency_key`` and ``timeout_ms``.
+    """
+    provenance = CONSUMERS[consumer].get("provenance")
+    assert provenance, f"{consumer} records no provenance"
+
+    missing = [key for key in PROVENANCE_REQUIRED_KEYS if not provenance.get(key)]
+    assert not missing, f"{consumer} provenance is missing {missing}"
+
+    head = provenance["head_sha"]
+    assert len(head) == 40 and all(c in "0123456789abcdef" for c in head), (
+        f"{consumer} provenance head_sha is not a full commit sha: {head!r}"
+    )
+    assert "read-only" in provenance["access"], (
+        f"{consumer} provenance must record read-only access to the consuming repository"
+    )
+
+
+def test_no_consuming_repository_is_imported_by_this_suite() -> None:
+    """
+    The matrix transcribes consumers; it must never depend on them.
+
+    A stray import of an application package would turn this repository's
+    test suite into a downstream consumer of the very repos it certifies.
+    """
+    forbidden = ("plasticos_gate", "constellation_gate", "app.engines", "app.services")
+    suite_root = _REPO_ROOT / "tests"
+
+    offenders: list[str] = []
+    for path in suite_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        for name in forbidden:
+            if f"import {name}" in source or f"from {name}" in source:
+                offenders.append(f"{path.relative_to(_REPO_ROOT)} -> {name}")
+
+    assert not offenders, f"the suite imports application packages: {offenders}"
+
+
 def test_every_declared_behavior_names_a_proof() -> None:
     """A behavior a consumer depends on must point at a test, not at prose."""
     proofs = MATRIX["behavior_proofs"]
@@ -139,7 +187,10 @@ def test_every_named_proof_exists_in_the_suite() -> None:
     must not decay into a list of tests that used to exist.
     """
     for behavior, node_id in MATRIX["behavior_proofs"].items():
-        relative_path, _, test_name = node_id.partition("::")
+        relative_path, _, qualifier = node_id.partition("::")
+        # A proof may live inside a test class, so the function name is the
+        # last segment, not everything after the first separator.
+        test_name = qualifier.rpartition("::")[2]
         path = _REPO_ROOT / relative_path
         assert path.is_file(), f"proof for {behavior!r} points at missing file {relative_path}"
         source = path.read_text(encoding="utf-8")

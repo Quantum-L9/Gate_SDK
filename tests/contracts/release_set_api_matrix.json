@@ -1,14 +1,16 @@
 {
   "schema": "gate-sdk.release-set-api-matrix/v1",
-  "purpose": "Lock the Gate_SDK public API surface actually consumed by the coordinated Odoo -> Gate -> EIE release set. Every entry was read out of the consuming repository at the call site named in `call_sites`; nothing here is aspirational. Removing or incompatibly changing anything listed must fail this repository's own test suite rather than surface days later inside an application repository.",
+  "purpose": "Lock the Gate_SDK public API surface actually consumed by the coordinated Odoo -> Gate -> EIE release set. Every entry was read out of the consuming repository at the exact head recorded in `provenance`; nothing here is aspirational or inferred from a signature. Removing or incompatibly changing anything listed must fail this repository's own test suite rather than surface days later inside an application repository.",
   "not_a_runtime_dependency": "The consuming repositories are never imported, installed, or contacted by these tests. This file is a transcription of their call sites, not a link to them.",
   "consumers": {
     "odoo": {
       "repository": "cryptoxdog/IB-Odoo_19",
       "role": "rail origin \u2014 mints the request packet and sends it to Gate",
       "call_sites": [
-        "plasticos_gate/services/gate_client.py",
-        "plasticos_gate/services/gate_config.py"
+        "plasticos_gate/services/gate_client.py::send_action",
+        "plasticos_gate/services/gate_client.py::send_converge_action",
+        "plasticos_gate/services/gate_client.py::send_match_action",
+        "plasticos_gate/services/gate_config.py::build_gate_client_config"
       ],
       "imports": [
         {
@@ -46,8 +48,12 @@
             "reply_to",
             "correlation_id",
             "classification",
-            "compliance_tags"
-          ]
+            "compliance_tags",
+            "idempotency_key",
+            "timeout_ms"
+          ],
+          "observed_in": "plasticos_gate/services/gate_client.py::send_action",
+          "note": "send_action forwards idempotency_key from send_converge_action and computes timeout_ms as int(config.timeout_seconds * 1000), so the packet budget and the caller's HTTP budget come from one config value. Odoo therefore depends on the SDK carrying that integer through unchanged \u2014 see the exact-integer behavior."
         }
       ],
       "members": [
@@ -76,10 +82,26 @@
       "behaviors": [
         "idempotency_key_carried_verbatim",
         "timeout_ms_carried_verbatim",
+        "timeout_ms_is_an_exact_integer_on_the_wire",
+        "correlation_id_constant_across_generations",
         "canonical_packet_response_only",
         "gate_is_the_only_egress_url",
         "no_client_side_retry"
-      ]
+      ],
+      "provenance": {
+        "repository": "cryptoxdog/IB-Odoo_19",
+        "pull_requests": [
+          163,
+          164
+        ],
+        "stack_head": 164,
+        "head_sha": "c7aa68b9e4975bae770dcbbf887867871ebde52d",
+        "base_pr_head_sha": "b9a59b4fda9179878a372641659cebb0b9bfa056",
+        "read_at": "refs/pull/164/head",
+        "access": "read-only git fetch; no runtime or test-time dependency"
+      },
+      "canonical_action": "converge",
+      "canonical_action_source": "plasticos_gate/services/gate_config.py \u2014 GateStatus.enrichment_action defaults to 'converge'; overridable via the plasticos.gate.enrichment_action config parameter. Gate_SDK neither knows nor validates this value."
     },
     "gate": {
       "repository": "Quantum-L9/Constellation.Gate",
@@ -242,19 +264,30 @@
         "idempotency_key_carried_verbatim",
         "timeout_ms_carried_verbatim",
         "hop_append_leaves_transport_hash_untouched"
-      ]
+      ],
+      "provenance": {
+        "repository": "Quantum-L9/Constellation.Gate",
+        "branch": "main",
+        "head_sha": "545eda4259121dbce85c084385f68d00632981d7",
+        "role_note": "main is the current routing authority: converge -> EIE",
+        "access": "read-only git clone; no runtime or test-time dependency"
+      },
+      "canonical_action_routing": "Gate routes 'converge' to the EIE node. That mapping is Gate's registry concern; Gate_SDK dispatches on header.action and knows nothing of it."
     },
     "eie": {
       "repository": "Quantum-L9/Enrichment.Inference.Engine",
       "role": "rail worker \u2014 hosts the SDK runtime, registers action handlers, returns the response payload",
       "call_sites": [
-        "app/main.py",
-        "app/services/chassis_handlers.py",
-        "app/engines/orchestration_layer.py",
-        "app/engines/packet_router.py",
-        "app/engines/graph_sync_client.py",
-        "app/services/graph_return_channel.py",
-        "app/services/contract_enforcement.py"
+        "app/main.py (create_node_app, NodeRuntimeConfig, LifecycleHook, clear_handlers)",
+        "app/engines/orchestration_layer.py (register_handler)",
+        "app/services/chassis_handlers.py (register_handler, registered_actions)",
+        "app/engines/packet_router.py (GateClient, GateClientConfig, TransportPacket, create_transport_packet)",
+        "app/engines/graph_sync_client.py (GateClient, GateClientConfig, TransportPacket, create_transport_packet)",
+        "app/services/graph_sync_hooks.py (GateClient, GateClientConfig, create_transport_packet)",
+        "app/services/graph_return_channel.py (TransportPacket, create_transport_packet, TransportValidationError)",
+        "app/services/contract_enforcement.py (TransportPacket, create_transport_packet)",
+        "tests/unit/test_orchestration_layer.py (execute_transport_packet)",
+        "tests/contracts/tier2/test_enforcement_packet_runtime.py (execute_transport_packet)"
       ],
       "imports": [
         {
@@ -263,7 +296,8 @@
             "LifecycleHook",
             "NodeRuntimeConfig",
             "create_node_app"
-          ]
+          ],
+          "consumed_by": "app"
         },
         {
           "module": "constellation_node_sdk.runtime.handlers",
@@ -271,33 +305,39 @@
             "register_handler",
             "registered_actions",
             "clear_handlers"
-          ]
+          ],
+          "consumed_by": "app"
         },
         {
           "module": "constellation_node_sdk.runtime.execution",
           "symbols": [
             "execute_transport_packet"
-          ]
+          ],
+          "consumed_by": "tests",
+          "note": "EIE's production path reaches the runtime through create_node_app, which calls execute_transport_packet internally. The direct import appears in EIE's own tests (tests/unit/test_orchestration_layer.py, tests/contracts/tier2/test_enforcement_packet_runtime.py), so moving this symbol breaks their CI even though no app module names it."
         },
         {
           "module": "constellation_node_sdk.transport",
           "symbols": [
             "TransportPacket",
             "create_transport_packet"
-          ]
+          ],
+          "consumed_by": "app"
         },
         {
           "module": "constellation_node_sdk.transport.errors",
           "symbols": [
             "TransportValidationError"
-          ]
+          ],
+          "consumed_by": "app"
         },
         {
           "module": "constellation_node_sdk.gate",
           "symbols": [
             "GateClient",
             "GateClientConfig"
-          ]
+          ],
+          "consumed_by": "app"
         }
       ],
       "signatures": [
@@ -310,7 +350,15 @@
             "lifecycle_hook",
             "config",
             "auto_register_with_gate"
-          ]
+          ],
+          "observed_call_site_keywords": [
+            "service_name",
+            "version",
+            "lifecycle_hook",
+            "config",
+            "auto_register_with_gate"
+          ],
+          "observed_in": "app/main.py (module scope)"
         },
         {
           "module": "constellation_node_sdk.runtime.execution",
@@ -344,8 +392,12 @@
             "service_version",
             "dev_mode",
             "gate_url",
-            "allowed_actions"
-          ]
+            "allowed_actions",
+            "max_attachments",
+            "max_packet_bytes",
+            "max_attachment_size_bytes"
+          ],
+          "note": "EIE pins the three size fields explicitly, guarding against an SDK default set that once made NodeRuntimeConfig unconstructible (attachment ceiling 10 MiB above a 256 KiB packet ceiling, which the model's own validator rejects). That defect is already fixed on this SDK's main \u2014 see the self-consistency behavior \u2014 so the pinning is now belt-and-braces rather than a workaround."
         }
       ],
       "behaviors": [
@@ -353,8 +405,20 @@
         "handler_receives_the_payload_unchanged",
         "response_payload_is_returned_unchanged",
         "runtime_enforces_the_packet_timeout",
+        "runtime_config_defaults_are_self_consistent",
         "no_runtime_retry"
-      ]
+      ],
+      "provenance": {
+        "repository": "Quantum-L9/Enrichment.Inference.Engine",
+        "pull_request": 200,
+        "head_sha": "93d28172b072114027c1ce9295d2d6097c3426c4",
+        "supersedes": 199,
+        "supersedes_note": "#199 is closed and superseded by #200. Verified read-only: the only diff between refs/pull/199/head and refs/pull/200/head is .l9/ci.json, so the Gate_SDK-facing surface is byte-identical between them. The reference is corrected for provenance accuracy, not because any consumed API moved.",
+        "read_at": "refs/pull/200/head",
+        "access": "read-only git fetch; no runtime or test-time dependency"
+      },
+      "canonical_action": "converge",
+      "canonical_action_source": "app/engines/orchestration_layer.py registers a 'converge' handler and app/main.py lists 'converge' in NodeRuntimeConfig.allowed_actions. The EnrichRequest -> converge -> EnrichResponse contract is EIE's; Gate_SDK carries the payloads and does not model either end."
     }
   },
   "behavior_proofs": {
@@ -371,6 +435,9 @@
     "handler_receives_the_payload_unchanged": "tests/integration/test_canonical_round_trip_specimen.py::test_worker_handler_receives_the_exact_opaque_payload",
     "response_payload_is_returned_unchanged": "tests/integration/test_canonical_round_trip_specimen.py::test_response_payload_reflects_the_handler_response_exactly",
     "runtime_enforces_the_packet_timeout": "tests/runtime/test_failure_and_timeout_boundaries.py::test_runtime_enforces_the_packet_timeout_budget",
-    "no_runtime_retry": "tests/gate/test_retry_neutrality.py::test_worker_runtime_invokes_the_handler_exactly_once"
-  }
+    "no_runtime_retry": "tests/gate/test_retry_neutrality.py::test_worker_runtime_invokes_the_handler_exactly_once",
+    "timeout_ms_is_an_exact_integer_on_the_wire": "tests/transport/test_timeout_edges.py::test_the_budget_crosses_the_wire_as_an_exact_integer",
+    "runtime_config_defaults_are_self_consistent": "tests/runtime/test_config_defaults.py::TestDefaultConsistency::test_default_construction_succeeds"
+  },
+  "provenance_note": "Each consumer records the exact commit its entries were read from. A matrix whose provenance drifts from the live release set is worse than no matrix: it certifies a compatibility claim against code nobody is shipping any more. When a consumer's head moves, re-read the call sites and update both the entries and the head recorded here."
 }
