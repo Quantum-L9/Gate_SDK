@@ -1,0 +1,447 @@
+{
+  "schema": "gate-sdk.release-set-api-matrix/v1",
+  "purpose": "Lock the Gate_SDK public API surface actually consumed by the coordinated Odoo -> Gate -> EIE release set. Every entry was read out of the consuming repository at the exact head recorded in `provenance`; nothing here is aspirational or inferred from a signature. Removing or incompatibly changing anything listed must fail this repository's own test suite rather than surface days later inside an application repository.",
+  "not_a_runtime_dependency": "The consuming repositories are never imported, installed, or contacted by these tests. This file is a transcription of their call sites, not a link to them.",
+  "consumers": {
+    "odoo": {
+      "repository": "cryptoxdog/IB-Odoo_19",
+      "role": "rail origin \u2014 mints the request packet and sends it to Gate",
+      "call_sites": [
+        "plasticos_gate/services/gate_client.py::send_action",
+        "plasticos_gate/services/gate_client.py::send_converge_action",
+        "plasticos_gate/services/gate_client.py::send_match_action",
+        "plasticos_gate/services/gate_config.py::build_gate_client_config"
+      ],
+      "imports": [
+        {
+          "module": "constellation_node_sdk",
+          "symbols": [
+            "GateClient",
+            "GateClientConfig",
+            "create_transport_packet"
+          ]
+        }
+      ],
+      "signatures": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "create_transport_packet",
+          "keyword_parameters": [
+            "action",
+            "payload",
+            "tenant",
+            "source_node",
+            "destination_node",
+            "reply_to",
+            "correlation_id",
+            "classification",
+            "compliance_tags",
+            "idempotency_key",
+            "timeout_ms"
+          ],
+          "observed_call_site_keywords": [
+            "action",
+            "payload",
+            "tenant",
+            "source_node",
+            "destination_node",
+            "reply_to",
+            "correlation_id",
+            "classification",
+            "compliance_tags",
+            "idempotency_key",
+            "timeout_ms"
+          ],
+          "observed_in": "plasticos_gate/services/gate_client.py::send_action",
+          "note": "send_action forwards idempotency_key from send_converge_action and computes timeout_ms as int(config.timeout_seconds * 1000), so the packet budget and the caller's HTTP budget come from one config value. Odoo therefore depends on the SDK carrying that integer through unchanged \u2014 see the exact-integer behavior."
+        }
+      ],
+      "members": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "GateClient",
+          "attributes": [
+            "send_to_gate",
+            "health",
+            "gate_url"
+          ]
+        }
+      ],
+      "model_fields": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "GateClientConfig",
+          "fields": [
+            "gate_url",
+            "local_node",
+            "timeout_seconds",
+            "allowed_gate_destination"
+          ]
+        }
+      ],
+      "behaviors": [
+        "idempotency_key_carried_verbatim",
+        "timeout_ms_carried_verbatim",
+        "timeout_ms_is_an_exact_integer_on_the_wire",
+        "correlation_id_constant_across_generations",
+        "canonical_packet_response_only",
+        "gate_is_the_only_egress_url",
+        "no_client_side_retry"
+      ],
+      "provenance": {
+        "repository": "cryptoxdog/IB-Odoo_19",
+        "pull_requests": [
+          163,
+          164
+        ],
+        "stack_head": 164,
+        "head_sha": "26ef06b790e5dccedeb1deadc7601da8715c9ee6",
+        "base_pr_head_sha": "b9a59b4fda9179878a372641659cebb0b9bfa056",
+        "merged_via": [
+          163,
+          164
+        ],
+        "read_at": "refs/heads/Staging after squash-merge of #163 (includes #164)",
+        "access": "read-only git fetch; no runtime or test-time dependency"
+      },
+      "canonical_action": "converge",
+      "canonical_action_source": "plasticos_gate/services/gate_config.py \u2014 GateStatus.enrichment_action defaults to 'converge'; overridable via the plasticos.gate.enrichment_action config parameter. Gate_SDK neither knows nor validates this value."
+    },
+    "gate": {
+      "repository": "Quantum-L9/Constellation.Gate",
+      "role": "rail hub \u2014 validates ingress, derives the worker packet, returns the response packet",
+      "call_sites": [
+        "constellation-gate/src/constellation_gate/routing/dispatch.py",
+        "constellation-gate/src/constellation_gate/boundary/delegation_factory.py",
+        "constellation-gate/src/constellation_gate/boundary/replay_factory.py",
+        "constellation-gate/src/constellation_gate/boundary/response_factory.py",
+        "constellation-gate/src/constellation_gate/boundary/failure_factory.py",
+        "constellation-gate/src/constellation_gate/boundary/ingress_validator.py",
+        "constellation-gate/src/constellation_gate/boundary/transport_codec.py",
+        "constellation-gate/src/constellation_gate/orchestration/workflow_engine.py"
+      ],
+      "imports": [
+        {
+          "module": "constellation_node_sdk.transport.packet",
+          "symbols": [
+            "TransportPacket",
+            "create_transport_packet"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.provenance",
+          "symbols": [
+            "RoutingProvenance"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.hashing",
+          "symbols": [
+            "compute_transport_hash"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.hop_trace",
+          "symbols": [
+            "make_ingress_hop",
+            "make_dispatch_hop"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.security.validation",
+          "symbols": [
+            "validate_transport_packet"
+          ]
+        }
+      ],
+      "signatures": [
+        {
+          "module": "constellation_node_sdk.transport.packet",
+          "symbol": "TransportPacket.derive",
+          "keyword_parameters": [
+            "packet_type",
+            "action",
+            "source_node",
+            "destination_node",
+            "reply_to",
+            "payload",
+            "provenance",
+            "hop",
+            "delegation_link",
+            "governance",
+            "timeout_ms",
+            "replay_mode"
+          ],
+          "observed_call_site_keywords": [
+            "packet_type",
+            "action",
+            "source_node",
+            "destination_node",
+            "reply_to",
+            "payload",
+            "provenance",
+            "timeout_ms"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.hop_trace",
+          "symbol": "make_ingress_hop",
+          "keyword_parameters": [
+            "packet",
+            "node",
+            "action",
+            "status"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.hop_trace",
+          "symbol": "make_dispatch_hop",
+          "keyword_parameters": [
+            "packet",
+            "node",
+            "action",
+            "target_node",
+            "status"
+          ]
+        }
+      ],
+      "members": [
+        {
+          "module": "constellation_node_sdk.transport.packet",
+          "symbol": "TransportPacket",
+          "attributes": [
+            "derive",
+            "with_hop",
+            "model_dump_json_dict",
+            "model_validate"
+          ]
+        }
+      ],
+      "model_fields": [
+        {
+          "module": "constellation_node_sdk.transport.packet",
+          "symbol": "TransportPacket",
+          "fields": [
+            "header",
+            "address",
+            "tenant",
+            "payload",
+            "security",
+            "governance",
+            "provenance",
+            "delegation_chain",
+            "hop_trace",
+            "lineage",
+            "attachments"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.models",
+          "symbol": "TransportHeader",
+          "fields": [
+            "packet_id",
+            "packet_type",
+            "action",
+            "timeout_ms",
+            "idempotency_key",
+            "trace_id",
+            "correlation_id",
+            "causation_id",
+            "retry_count",
+            "replay_mode"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.models",
+          "symbol": "TransportLineage",
+          "fields": [
+            "parent_id",
+            "root_id",
+            "generation"
+          ]
+        }
+      ],
+      "behaviors": [
+        "correlation_id_constant_across_generations",
+        "causation_id_names_the_immediate_parent",
+        "lineage_root_never_moves",
+        "idempotency_key_carried_verbatim",
+        "timeout_ms_carried_verbatim",
+        "hop_append_leaves_transport_hash_untouched"
+      ],
+      "provenance": {
+        "repository": "Quantum-L9/Constellation.Gate",
+        "branch": "main",
+        "head_sha": "545eda4259121dbce85c084385f68d00632981d7",
+        "role_note": "main is the current routing authority: converge -> EIE",
+        "access": "read-only git clone; no runtime or test-time dependency"
+      },
+      "canonical_action_routing": "Gate routes 'converge' to the EIE node. That mapping is Gate's registry concern; Gate_SDK dispatches on header.action and knows nothing of it."
+    },
+    "eie": {
+      "repository": "Quantum-L9/Enrichment.Inference.Engine",
+      "role": "rail worker \u2014 hosts the SDK runtime, registers action handlers, returns the response payload",
+      "call_sites": [
+        "app/main.py (create_node_app, NodeRuntimeConfig, LifecycleHook, clear_handlers)",
+        "app/engines/orchestration_layer.py (register_handler)",
+        "app/services/chassis_handlers.py (register_handler, registered_actions)",
+        "app/engines/packet_router.py (GateClient, GateClientConfig, TransportPacket, create_transport_packet)",
+        "app/engines/graph_sync_client.py (GateClient, GateClientConfig, TransportPacket, create_transport_packet)",
+        "app/services/graph_sync_hooks.py (GateClient, GateClientConfig, create_transport_packet)",
+        "app/services/graph_return_channel.py (TransportPacket, create_transport_packet, TransportValidationError)",
+        "app/services/contract_enforcement.py (TransportPacket, create_transport_packet)",
+        "tests/unit/test_orchestration_layer.py (execute_transport_packet)",
+        "tests/contracts/tier2/test_enforcement_packet_runtime.py (execute_transport_packet)"
+      ],
+      "imports": [
+        {
+          "module": "constellation_node_sdk",
+          "symbols": [
+            "LifecycleHook",
+            "NodeRuntimeConfig",
+            "create_node_app"
+          ],
+          "consumed_by": "app"
+        },
+        {
+          "module": "constellation_node_sdk.runtime.handlers",
+          "symbols": [
+            "register_handler",
+            "registered_actions",
+            "clear_handlers"
+          ],
+          "consumed_by": "app"
+        },
+        {
+          "module": "constellation_node_sdk.runtime.execution",
+          "symbols": [
+            "execute_transport_packet"
+          ],
+          "consumed_by": "tests",
+          "note": "EIE's production path reaches the runtime through create_node_app, which calls execute_transport_packet internally. The direct import appears in EIE's own tests (tests/unit/test_orchestration_layer.py, tests/contracts/tier2/test_enforcement_packet_runtime.py), so moving this symbol breaks their CI even though no app module names it."
+        },
+        {
+          "module": "constellation_node_sdk.transport",
+          "symbols": [
+            "TransportPacket",
+            "create_transport_packet"
+          ],
+          "consumed_by": "app"
+        },
+        {
+          "module": "constellation_node_sdk.transport.errors",
+          "symbols": [
+            "TransportValidationError"
+          ],
+          "consumed_by": "app"
+        },
+        {
+          "module": "constellation_node_sdk.gate",
+          "symbols": [
+            "GateClient",
+            "GateClientConfig"
+          ],
+          "consumed_by": "app"
+        }
+      ],
+      "signatures": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "create_node_app",
+          "keyword_parameters": [
+            "service_name",
+            "version",
+            "lifecycle_hook",
+            "config",
+            "auto_register_with_gate"
+          ],
+          "observed_call_site_keywords": [
+            "service_name",
+            "version",
+            "lifecycle_hook",
+            "config",
+            "auto_register_with_gate"
+          ],
+          "observed_in": "app/main.py (module scope)"
+        },
+        {
+          "module": "constellation_node_sdk.runtime.execution",
+          "symbol": "execute_transport_packet",
+          "keyword_parameters": [
+            "node_name",
+            "allowed_actions",
+            "dev_mode",
+            "require_signature"
+          ]
+        }
+      ],
+      "members": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "LifecycleHook",
+          "attributes": [
+            "startup",
+            "shutdown"
+          ]
+        }
+      ],
+      "model_fields": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "NodeRuntimeConfig",
+          "fields": [
+            "environment",
+            "node_name",
+            "service_name",
+            "service_version",
+            "dev_mode",
+            "gate_url",
+            "allowed_actions",
+            "max_attachments",
+            "max_packet_bytes",
+            "max_attachment_size_bytes"
+          ],
+          "note": "EIE pins the three size fields explicitly, guarding against an SDK default set that once made NodeRuntimeConfig unconstructible (attachment ceiling 10 MiB above a 256 KiB packet ceiling, which the model's own validator rejects). That defect is already fixed on this SDK's main \u2014 see the self-consistency behavior \u2014 so the pinning is now belt-and-braces rather than a workaround."
+        }
+      ],
+      "behaviors": [
+        "dispatch_is_by_header_action",
+        "handler_receives_the_payload_unchanged",
+        "response_payload_is_returned_unchanged",
+        "runtime_enforces_the_packet_timeout",
+        "runtime_config_defaults_are_self_consistent",
+        "no_runtime_retry"
+      ],
+      "provenance": {
+        "repository": "Quantum-L9/Enrichment.Inference.Engine",
+        "pull_request": 200,
+        "head_sha": "e9d3a4bae89271351ce44fafd6db11042d3fab79",
+        "supersedes": 199,
+        "supersedes_note": "#199 is closed and superseded by #200. Provenance is the current #200 head (deadline-exhaustion state fix on e9d3a4b). Gate_SDK-facing imports are unchanged from the earlier #200 tip; this update is freshness, not an API move.",
+        "read_at": "refs/pull/200/head",
+        "access": "read-only git fetch; no runtime or test-time dependency"
+      },
+      "canonical_action": "converge",
+      "canonical_action_source": "app/engines/orchestration_layer.py registers a 'converge' handler and app/main.py lists 'converge' in NodeRuntimeConfig.allowed_actions. The EnrichRequest -> converge -> EnrichResponse contract is EIE's; Gate_SDK carries the payloads and does not model either end."
+    }
+  },
+  "behavior_proofs": {
+    "idempotency_key_carried_verbatim": "tests/transport/test_idempotency_propagation.py::test_create_transport_packet_stores_idempotency_key_verbatim",
+    "timeout_ms_carried_verbatim": "tests/transport/test_timeout_propagation.py::test_custom_timeout_survives_serialization_boundary",
+    "canonical_packet_response_only": "tests/gate/test_malformed_gate_response.py::test_bare_domain_dict_is_not_accepted_as_a_response",
+    "gate_is_the_only_egress_url": "tests/gate/test_client_transport_discipline.py::test_gate_client_config_exposes_no_peer_url_surface",
+    "no_client_side_retry": "tests/gate/test_retry_neutrality.py::test_gate_client_makes_exactly_one_http_attempt",
+    "correlation_id_constant_across_generations": "tests/transport/test_correlation_causation.py::test_three_generation_chain_keeps_one_correlation_and_walks_causation",
+    "causation_id_names_the_immediate_parent": "tests/transport/test_correlation_causation.py::test_three_generation_chain_keeps_one_correlation_and_walks_causation",
+    "lineage_root_never_moves": "tests/integration/test_canonical_round_trip_specimen.py::test_canonical_round_trip_preserves_lineage_and_causation",
+    "hop_append_leaves_transport_hash_untouched": "tests/transport/test_adversarial_integrity.py::test_hop_append_is_observational_only",
+    "dispatch_is_by_header_action": "tests/runtime/test_domain_transparency.py::test_dispatch_is_by_header_action_not_payload_shape",
+    "handler_receives_the_payload_unchanged": "tests/integration/test_canonical_round_trip_specimen.py::test_worker_handler_receives_the_exact_opaque_payload",
+    "response_payload_is_returned_unchanged": "tests/integration/test_canonical_round_trip_specimen.py::test_response_payload_reflects_the_handler_response_exactly",
+    "runtime_enforces_the_packet_timeout": "tests/runtime/test_failure_and_timeout_boundaries.py::test_runtime_enforces_the_packet_timeout_budget",
+    "no_runtime_retry": "tests/gate/test_retry_neutrality.py::test_worker_runtime_invokes_the_handler_exactly_once",
+    "timeout_ms_is_an_exact_integer_on_the_wire": "tests/transport/test_timeout_edges.py::test_the_budget_crosses_the_wire_as_an_exact_integer",
+    "runtime_config_defaults_are_self_consistent": "tests/runtime/test_config_defaults.py::TestDefaultConsistency::test_default_construction_succeeds"
+  },
+  "provenance_note": "Each consumer records the exact commit its entries were read from. A matrix whose provenance drifts from the live release set is worse than no matrix: it certifies a compatibility claim against code nobody is shipping any more. When a consumer's head moves, re-read the call sites and update both the entries and the head recorded here."
+}
