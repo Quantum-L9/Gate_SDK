@@ -206,9 +206,15 @@ def build_node_registration(spec: dict[str, Any]) -> NodeRegistration:
     if not isinstance(metadata_raw, dict):
         raise ValueError(f"spec.yaml node.metadata must be a mapping (node: {node_id})")
 
+    # The fallback is a cluster-internal service address, reached over the
+    # container network rather than the public internet, and Gate's own
+    # registration schema accepts both schemes for exactly that reason. A
+    # deployment that terminates TLS between nodes sets node.internal_url
+    # explicitly; hard-coding https here would break every node that does not.
+    # NOSONAR(S5332): cluster-internal default, overridable per node.
     return NodeRegistration(
         node_name=node_id,
-        internal_url=str(node.get("internal_url", f"http://{node_id}:8000")),
+        internal_url=str(node.get("internal_url", f"http://{node_id}:8000")),  # NOSONAR(S5332)
         supported_actions=tuple(str(action) for action in actions_raw),
         priority_class=str(node.get("priority_class", "P2")).strip() or "P2",
         max_concurrent=int(node.get("max_concurrent", 50)),

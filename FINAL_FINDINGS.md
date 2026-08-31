@@ -22,7 +22,8 @@ assertion in Gate, is deferred with an owner, and does not affect Gate's runtime
 |---|---|
 | Repository | `Quantum-L9/Gate_SDK` |
 | Branch | `claude/gate-sdk-transport-closure-u2klcf` |
-| Candidate HEAD | `da87cc1ca9805ea3fde132d88c93ce2efca55fc1` |
+| Candidate HEAD | `1bccf47adca55b14fe980be04e7da7087b4461ce` |
+| Pull request | [#40](https://github.com/Quantum-L9/Gate_SDK/pull/40) (base `main`, 5 commits, 30 files, +4133/-178) |
 | Base (`main`) at start | `d09fe58a6cd68ef8aa883896c68badc95f96e090` |
 | Package version | `1.0.1` (unchanged) |
 | `requires-python` | `>=3.12` (unchanged) |
@@ -251,9 +252,9 @@ bound (added in `main` to match the Odoo.sh pyOpenSSL window) is untouched.
 
 | Proof | Result |
 |---|---|
-| Editable install, Python 3.12.3 | 594 passed |
-| Full suite, Python 3.13.12 | 594 passed |
-| Full suite, `cryptography==43.0.0` (declared lower bound) | 594 passed; security/transport subset 223 passed |
+| Editable install, Python 3.12.3 | 612 passed |
+| Full suite, Python 3.13.12 | 612 passed |
+| Full suite, `cryptography==43.0.0` (declared lower bound) | 612 passed; security/transport subset 223 passed |
 | `python -m build --wheel` | wheel built |
 | Clean-directory wheel install, checkout stripped from `sys.path` | 17 passed (`tests/packaging/`) |
 
@@ -373,9 +374,9 @@ expectation.
 | Command | Environment | Result |
 |---|---|---|
 | `pytest -q` (baseline, before changes) | py3.12.3 | 486 passed |
-| `pytest -q` | py3.12.3 | **594 passed** |
-| `pytest -q` | py3.13.12 | 594 passed |
-| `pytest -q` (`cryptography==43.0.0`) | py3.12.3 | 594 passed |
+| `pytest -q` | py3.12.3 | **612 passed** |
+| `pytest -q` | py3.13.12 | 612 passed |
+| `pytest -q` (`cryptography==43.0.0`) | py3.12.3 | 612 passed |
 | `pytest -q tests/security tests/transport` (`cryptography==43.0.0`) | py3.12.3 | 223 passed |
 | `pytest -q tests/packaging` (built + installed wheel) | py3.12.3 | 17 passed |
 | `ruff check src tests scripts examples` | py3.12.3 | All checks passed |
@@ -388,7 +389,7 @@ expectation.
 | Odoo consumability proof (8 assertions) | installed SDK | all true |
 | EIE registration proof (11 assertions) | installed SDK | all true |
 
-108 tests added.
+126 tests added.
 
 # Installed-Package Evidence
 
@@ -419,6 +420,17 @@ None in Gate_SDK.
 3. **Legacy tests monkeypatch `httpx.AsyncClient` globally.** The
    `route_gate_http` fixture predates the `transport=` seam. New tests use the
    seam. Not migrated: churning working tests was out of scope.
+4. **SonarCloud S5332 on the `internal_url` fallback.** `build_node_registration`
+   defaults to `http://{node_id}:8000` when `spec.yaml` omits `internal_url`.
+   The line is pre-existing on `main` (`registration.py:55`) and was only
+   relocated by this refactor, which is why Sonar counts it as new code. It is
+   not changed to `https`: the value is a cluster-internal service address on
+   the container network, Gate's own `NodeRegistrationInput` accepts both
+   schemes for that reason, and every real node (EIE's
+   `http://enrichment-engine:8000`) would break. Suppressed with a stated
+   justification, matching the repository's existing `NOSONAR` precedent in
+   `tests/security/test_validation.py`. Deployments that terminate TLS between
+   nodes set `node.internal_url` explicitly.
 
 # Scope Drift Audit
 
@@ -503,12 +515,12 @@ boundary.
 ```yaml
 repository: Quantum-L9/Gate_SDK
 branch: claude/gate-sdk-transport-closure-u2klcf
-candidate_head: "da87cc1ca9805ea3fde132d88c93ce2efca55fc1"
+candidate_head: "1bccf47adca55b14fe980be04e7da7087b4461ce"
 pr:
-  created: false
-  number: null
-  url: null
-  head_sha: null
+  created: true
+  number: 40
+  url: "https://github.com/Quantum-L9/Gate_SDK/pull/40"
+  head_sha: "1bccf47adca55b14fe980be04e7da7087b4461ce"
 architecture:
   transport_authority: Gate_SDK
   domain_payload_opaque: true
