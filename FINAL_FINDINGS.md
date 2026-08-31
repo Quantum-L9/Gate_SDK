@@ -412,7 +412,17 @@ too, this branch touches no dependency manifest, and every fix version
 IB-Odoo_19's `43.0.3` pin installable and stop pip floating past pyOpenSSL
 24.3.0. No fix is portable without reversing that decision, so none was ported
 and the security pin was not relaxed. Stood down with one comment on PR #40.
-Resolving it is a dependency decision for the pin's owner.
+
+Checked against the primary source rather than the pin's commit message:
+`IB-Odoo_19/requirements.txt` documents that `<45` is exactly the top of
+pyOpenSSL 24.3.0's declared range (cryptography 41.0.5–44.x), and that
+exceeding it crashes the **entire** Odoo.sh registry on restart — every module
+imports through `base`, not just `plasticos_*`. So the unblocking order is
+fixed: pyOpenSSL must first be forward-pinned in IB-Odoo_19 to a release whose
+range covers cryptography ≥ 46.0.5, and only then can the Gate_SDK ceiling
+move. That is a coordinated two-repo dependency decision with a
+production-severity failure mode, owned by the pin's author (#39) — not
+something to reverse inside a transport-abstraction PR.
 
 # Remaining Non-Blocking Defects
 
@@ -471,6 +481,7 @@ repository.
 | Gate's stale `len(hop_trace) == 2` assertion | Constellation.Gate | Gate adopts an SDK pin ≥ `1d52369` and updates the assertion |
 | Odoo deleting its shadow transport | IB-Odoo_19 | Odoo adopts `execute()` |
 | EIE deleting `app/services/gate_registration.py` | EIE | EIE adopts `register_node()` |
+| `cryptography` advisories vs the pyOpenSSL ceiling | Gate_SDK + IB-Odoo_19 dependency owner (#39) | pyOpenSSL forward-pin lands in IB-Odoo_19, then Gate_SDK raises the ceiling |
 | Packaging harness building from a temp cwd | Gate_SDK | non-blocking hygiene |
 | Migrating legacy tests to the `transport=` seam | Gate_SDK | non-blocking hygiene |
 
