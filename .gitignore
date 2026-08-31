@@ -20,3 +20,4 @@ build/
 
 # Local work in progress (never publish)
 /WIP/
+.venv312/

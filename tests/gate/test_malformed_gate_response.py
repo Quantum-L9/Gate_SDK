@@ -14,17 +14,20 @@ be masked by a silent retry.
 from __future__ import annotations
 
 import copy
-import json
 from typing import Any
 
 import httpx
 import pytest
-from pydantic import ValidationError
 
 from constellation_node_sdk.gate.client import GateClient
 from constellation_node_sdk.gate.config import GateClientConfig
+from constellation_node_sdk.gate.errors import (
+    GateConnectionError,
+    GateHTTPError,
+    GateResponseError,
+    GateSecurityError,
+)
 from constellation_node_sdk.transport.codec import encode_transport_packet
-from constellation_node_sdk.transport.errors import TransportIntegrityError
 from constellation_node_sdk.transport.hashing import compute_payload_hash
 from constellation_node_sdk.transport.packet import TransportPacket, create_transport_packet
 from constellation_node_sdk.transport.provenance import RoutingProvenance
@@ -103,7 +106,7 @@ async def test_bare_domain_dict_is_not_accepted_as_a_response(
         route_gate_http,
         tenant,
         lambda _request, _attempt: httpx.Response(200, json=body),
-        ValidationError,
+        GateResponseError,
     )
 
 
@@ -145,7 +148,7 @@ async def test_structurally_invalid_packet_bodies_are_rejected(
         route_gate_http,
         tenant,
         lambda _request, _attempt: httpx.Response(200, json=body),
-        ValidationError,
+        GateResponseError,
     )
 
 
@@ -159,7 +162,7 @@ async def test_non_object_response_bodies_are_rejected(
         route_gate_http,
         tenant,
         lambda _request, _attempt: httpx.Response(200, json=body),
-        ValueError,
+        GateResponseError,
     )
     assert "JSON object" in str(error)
 
@@ -175,7 +178,7 @@ async def test_a_non_json_response_body_is_rejected(
         lambda _request, _attempt: httpx.Response(
             200, content=b"<html>gateway</html>", headers={"Content-Type": "text/html"}
         ),
-        json.JSONDecodeError,
+        GateResponseError,
     )
 
 
@@ -192,7 +195,7 @@ async def test_an_unknown_top_level_key_is_rejected(
         route_gate_http,
         tenant,
         lambda _request, _attempt: httpx.Response(200, json=body),
-        ValidationError,
+        GateResponseError,
     )
 
 
@@ -214,7 +217,7 @@ async def test_a_response_with_a_mutated_payload_is_rejected(
         route_gate_http,
         tenant,
         lambda _request, _attempt: httpx.Response(200, json=body),
-        TransportIntegrityError,
+        GateSecurityError,
     )
     assert "payload_hash" in str(error)
 
@@ -233,7 +236,7 @@ async def test_a_response_with_a_repaired_payload_hash_is_still_rejected(
         route_gate_http,
         tenant,
         lambda _request, _attempt: httpx.Response(200, json=body),
-        TransportIntegrityError,
+        GateSecurityError,
     )
     assert "transport_hash" in str(error)
 
@@ -261,7 +264,7 @@ async def test_an_http_error_never_yields_a_packet(
         route_gate_http,
         tenant,
         lambda _request, _attempt: httpx.Response(status_code, json=body),
-        httpx.HTTPStatusError,
+        GateHTTPError,
     )
 
 
@@ -274,4 +277,4 @@ async def test_a_transport_failure_never_yields_a_packet(
     def explode(_request: httpx.Request, _attempt: int) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    await _expect_rejection(route_gate_http, tenant, explode, httpx.ConnectError)
+    await _expect_rejection(route_gate_http, tenant, explode, GateConnectionError)
