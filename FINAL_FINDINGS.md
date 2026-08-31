@@ -22,8 +22,8 @@ assertion in Gate, is deferred with an owner, and does not affect Gate's runtime
 |---|---|
 | Repository | `Quantum-L9/Gate_SDK` |
 | Branch | `claude/gate-sdk-transport-closure-u2klcf` |
-| Candidate HEAD | `1bccf47adca55b14fe980be04e7da7087b4461ce` |
-| Pull request | [#40](https://github.com/Quantum-L9/Gate_SDK/pull/40) (base `main`, 5 commits, 30 files, +4133/-178) |
+| Candidate HEAD | `6225f75ae185dd6fff98a12c670898a536069392` |
+| Pull request | [#40](https://github.com/Quantum-L9/Gate_SDK/pull/40) (base `main`) — CI green except `gate-5-dep-audit`, which is red on `main` too |
 | Base (`main`) at start | `d09fe58a6cd68ef8aa883896c68badc95f96e090` |
 | Package version | `1.0.1` (unchanged) |
 | `requires-python` | `>=3.12` (unchanged) |
@@ -405,6 +405,15 @@ Gate-bound packet whose header budget (7000ms) and applied socket read timeout
 
 None in Gate_SDK.
 
+One CI check is red on the PR and is **not** this branch's: `gate-5-dep-audit`
+reports 7 advisories in `cryptography 44.0.3`. It is red on `main` (`d09fe58`)
+too, this branch touches no dependency manifest, and every fix version
+(46.0.5 … 50.0.0) sits above the deliberate `<45` ceiling set in #39 to keep
+IB-Odoo_19's `43.0.3` pin installable and stop pip floating past pyOpenSSL
+24.3.0. No fix is portable without reversing that decision, so none was ported
+and the security pin was not relaxed. Stood down with one comment on PR #40.
+Resolving it is a dependency decision for the pin's owner.
+
 # Remaining Non-Blocking Defects
 
 1. **Leftover repo-root `build/` shadows the `build` frontend.** A previous
@@ -515,12 +524,12 @@ boundary.
 ```yaml
 repository: Quantum-L9/Gate_SDK
 branch: claude/gate-sdk-transport-closure-u2klcf
-candidate_head: "1bccf47adca55b14fe980be04e7da7087b4461ce"
+candidate_head: "6225f75ae185dd6fff98a12c670898a536069392"
 pr:
   created: true
   number: 40
   url: "https://github.com/Quantum-L9/Gate_SDK/pull/40"
-  head_sha: "1bccf47adca55b14fe980be04e7da7087b4461ce"
+  head_sha: "6225f75ae185dd6fff98a12c670898a536069392"
 architecture:
   transport_authority: Gate_SDK
   domain_payload_opaque: true

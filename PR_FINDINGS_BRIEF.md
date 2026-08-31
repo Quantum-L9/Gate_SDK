@@ -4,7 +4,7 @@
 PR:
   number/url: 40 — https://github.com/Quantum-L9/Gate_SDK/pull/40
   branch: claude/gate-sdk-transport-closure-u2klcf
-  exact_pr_head_sha: 389299e
+  exact_pr_head_sha: 6225f75
   base: main
 
 VERDICT:
