@@ -523,3 +523,44 @@ def restricted_packet(tenant: TenantContext) -> TransportPacket:
         }
     )
     return TransportPacket.model_validate(finalized)
+
+
+# ---------------------------------------------------------------------------
+# Domain-neutral transport fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def domain_payload() -> dict[str, Any]:
+    """
+    An arbitrary application-domain payload, opaque to the SDK.
+
+    The shape is illustrative transport data only. The SDK must carry it
+    unchanged and must never interpret, rename, or supplement any key in it.
+    """
+    return {
+        "entity": {
+            "id": "res.partner:55",
+            "_odoo_entity_id": "res.partner:55",
+            "name": "Acme",
+            "website": None,
+        },
+        "object_type": "organization",
+        "objective": "enrich",
+        "max_variations": 5,
+    }
+
+
+@pytest.fixture()
+def domain_response_payload() -> dict[str, Any]:
+    """
+    An arbitrary application-domain response payload, opaque to the SDK.
+
+    The SDK must return it unchanged. In particular it must not translate
+    ``state`` to ``status`` or ``fields`` to ``final_fields``.
+    """
+    return {
+        "state": "completed",
+        "fields": {"website": "https://example.com", "employee_count": None},
+        "entity": {"id": "res.partner:55"},
+    }
