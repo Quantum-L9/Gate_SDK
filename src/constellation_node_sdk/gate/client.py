@@ -481,8 +481,7 @@ class GateClient:
             ) from exc
         except httpx.HTTPError as exc:
             raise GateConnectionError(
-                f"could not reach Gate health at {url} "
-                f"({type(exc).__name__}: {exc or 'no detail'})"
+                f"could not reach Gate health at {url} ({type(exc).__name__}: {exc or 'no detail'})"
             ) from exc
 
         self._raise_for_status(response, context="Gate health")

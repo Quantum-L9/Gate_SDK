@@ -260,7 +260,9 @@ async def test_no_gate_failure_message_is_empty(domain_payload: dict[str, Any]) 
         lambda _r, _a: (_ for _ in ()).throw(httpx.ConnectTimeout("")),
         lambda _r, _a: (_ for _ in ()).throw(httpx.ConnectError("")),
         lambda _r, _a: httpx.Response(500, content=b""),
-        lambda _r, _a: httpx.Response(200, content=b"<html/>", headers={"Content-Type": "text/html"}),
+        lambda _r, _a: httpx.Response(
+            200, content=b"<html/>", headers={"Content-Type": "text/html"}
+        ),
     ]
 
     for responder in responders:

@@ -286,9 +286,7 @@ async def test_a_signed_rail_round_trips(converge_worker: Any) -> None:
     )
     client = GateClient(config, transport=RecordingTransport(gate))
 
-    response = await client.execute(
-        action="converge", payload=CONSUMER_PAYLOAD, tenant="tenant-a"
-    )
+    response = await client.execute(action="converge", payload=CONSUMER_PAYLOAD, tenant="tenant-a")
 
     assert gate.ingress_packets[0].security.signature is not None
     assert gate.ingress_packets[0].security.signing_key_id == "odoo-key-1"
