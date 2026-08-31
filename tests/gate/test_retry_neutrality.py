@@ -119,9 +119,11 @@ async def test_gate_client_does_not_retry_a_retryable_looking_status(
     ``429`` and ``503`` carry retry semantics by convention. If the SDK were
     ever going to hide a retry, it would be here.
     """
+    client = _client()
+    request = _request(tenant)
     with route_gate_http(lambda _r, _a: httpx.Response(status_code)) as transport:
         with pytest.raises(httpx.HTTPStatusError):
-            await _client().send_to_gate(_request(tenant))
+            await client.send_to_gate(request)
 
     assert len(transport.requests) == 1
 
@@ -135,9 +137,11 @@ async def test_gate_client_does_not_retry_a_dead_socket(
     def explode(_request: httpx.Request, _attempt: int) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
+    client = _client()
+    request = _request(tenant)
     with route_gate_http(explode) as transport:
         with pytest.raises(httpx.ConnectError):
-            await _client().send_to_gate(_request(tenant))
+            await client.send_to_gate(request)
 
     assert len(transport.requests) == 1
 
@@ -151,9 +155,11 @@ async def test_gate_client_does_not_retry_a_read_timeout(
     def stall(_request: httpx.Request, _attempt: int) -> httpx.Response:
         raise httpx.ReadTimeout("gate did not answer")
 
+    client = _client()
+    request = _request(tenant)
     with route_gate_http(stall) as transport:
         with pytest.raises(httpx.ReadTimeout):
-            await _client().send_to_gate(_request(tenant))
+            await client.send_to_gate(request)
 
     assert len(transport.requests) == 1
 
@@ -213,8 +219,9 @@ async def test_worker_runtime_does_not_reinvoke_a_failing_handler(
         calls.append(1)
         raise RuntimeError("provider unavailable")
 
+    packet = _worker_request(tenant)
     with pytest.raises(RuntimeError):
-        await execute_transport_packet(_worker_request(tenant), node_name="worker", dev_mode=True)
+        await execute_transport_packet(packet, node_name="worker", dev_mode=True)
 
     assert calls == [1]
 
@@ -234,10 +241,9 @@ async def test_worker_runtime_does_not_reinvoke_a_timing_out_handler(
         await asyncio.sleep(2)
         return {"state": "completed", "fields": {}}
 
+    packet = _worker_request(tenant, timeout_ms=50)
     with pytest.raises(TimeoutError):
-        await execute_transport_packet(
-            _worker_request(tenant, timeout_ms=50), node_name="worker", dev_mode=True
-        )
+        await execute_transport_packet(packet, node_name="worker", dev_mode=True)
 
     assert calls == [1]
 

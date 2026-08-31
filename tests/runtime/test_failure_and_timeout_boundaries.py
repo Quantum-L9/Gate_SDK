@@ -119,8 +119,9 @@ async def test_a_raising_handler_produces_no_response_packet(tenant: TenantConte
         calls.append(1)
         raise HandlerExploded("provider unavailable")
 
+    request = _request(tenant)
     with pytest.raises(HandlerExploded):
-        await execute_transport_packet(_request(tenant), node_name="worker", dev_mode=True)
+        await execute_transport_packet(request, node_name="worker", dev_mode=True)
 
     assert len(calls) == 1, "the runtime retried a failing handler"
 
@@ -210,10 +211,9 @@ async def test_runtime_enforces_the_packet_timeout_budget(tenant: TenantContext)
         await asyncio.sleep(2)
         return {"state": "completed", "fields": {}}
 
+    request = _request(tenant, timeout_ms=50)
     with pytest.raises(TimeoutError) as caught:
-        await execute_transport_packet(
-            _request(tenant, timeout_ms=50), node_name="worker", dev_mode=True
-        )
+        await execute_transport_packet(request, node_name="worker", dev_mode=True)
 
     assert "50ms" in str(caught.value)
     assert len(calls) == 1, "the runtime retried a timing-out handler"

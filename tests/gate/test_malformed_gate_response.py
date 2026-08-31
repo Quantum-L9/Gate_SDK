@@ -73,9 +73,10 @@ async def _expect_rejection(
 ) -> Exception:
     """Send one packet, require a rejection, and require exactly one attempt."""
     request = _request(tenant)
+    client = _client()
     with route_gate_http(responder) as transport:
         with pytest.raises(expected) as caught:
-            await _client().send_to_gate(request)
+            await client.send_to_gate(request)
     assert len(transport.requests) == 1, "a rejected response was silently retried"
     return caught.value
 
