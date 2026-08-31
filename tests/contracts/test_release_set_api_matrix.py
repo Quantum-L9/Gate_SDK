@@ -143,8 +143,14 @@ def test_every_consumer_records_where_its_entries_were_read(consumer: str) -> No
     assert not missing, f"{consumer} provenance is missing {missing}"
 
     head = provenance["head_sha"]
-    assert len(head) == 40 and all(c in "0123456789abcdef" for c in head), (
-        f"{consumer} provenance head_sha is not a full commit sha: {head!r}"
+    # Split deliberately: an abbreviated sha and a malformed one are different
+    # mistakes, and a combined assertion would not say which one was made.
+    assert len(head) == 40, (
+        f"{consumer} provenance head_sha is abbreviated, not a full commit sha: {head!r}"
+    )
+    non_hex = sorted({c for c in head if c not in "0123456789abcdef"})
+    assert not non_hex, (
+        f"{consumer} provenance head_sha contains non-hex characters {non_hex}: {head!r}"
     )
     assert "read-only" in provenance["access"], (
         f"{consumer} provenance must record read-only access to the consuming repository"
