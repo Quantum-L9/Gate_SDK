@@ -42,9 +42,9 @@ from constellation_node_sdk.transport.tenant import TenantContext
 # Stable across the whole specimen: one logical request keeps one of each.
 #
 # Fixture provenance: the shapes below resemble what the coordinated Odoo
-# stack sends today (cryptoxdog/IB-Odoo_19 #164 @ c7aa68b,
+# stack sends today (cryptoxdog/IB-Odoo_19 Staging @ 26ef06b after #163+#164,
 # plasticos_gate/services/gate_client.py::send_action) and what EIE returns
-# (Quantum-L9/Enrichment.Inference.Engine #200 @ 93d2817). They are recorded
+# (Quantum-L9/Enrichment.Inference.Engine #200 @ e9d3a4b). They are recorded
 # so a reader can tell this is real traffic shape rather than invention.
 #
 # To Gate_SDK they are arbitrary opaque JSON. Nothing in this file may give

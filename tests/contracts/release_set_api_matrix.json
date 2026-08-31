@@ -95,9 +95,13 @@
           164
         ],
         "stack_head": 164,
-        "head_sha": "c7aa68b9e4975bae770dcbbf887867871ebde52d",
+        "head_sha": "26ef06b790e5dccedeb1deadc7601da8715c9ee6",
         "base_pr_head_sha": "b9a59b4fda9179878a372641659cebb0b9bfa056",
-        "read_at": "refs/pull/164/head",
+        "merged_via": [
+          163,
+          164
+        ],
+        "read_at": "refs/heads/Staging after squash-merge of #163 (includes #164)",
         "access": "read-only git fetch; no runtime or test-time dependency"
       },
       "canonical_action": "converge",
@@ -411,9 +415,9 @@
       "provenance": {
         "repository": "Quantum-L9/Enrichment.Inference.Engine",
         "pull_request": 200,
-        "head_sha": "93d28172b072114027c1ce9295d2d6097c3426c4",
+        "head_sha": "e9d3a4bae89271351ce44fafd6db11042d3fab79",
         "supersedes": 199,
-        "supersedes_note": "#199 is closed and superseded by #200. Verified read-only: the only diff between refs/pull/199/head and refs/pull/200/head is .l9/ci.json, so the Gate_SDK-facing surface is byte-identical between them. The reference is corrected for provenance accuracy, not because any consumed API moved.",
+        "supersedes_note": "#199 is closed and superseded by #200. Provenance is the current #200 head (deadline-exhaustion state fix on e9d3a4b). Gate_SDK-facing imports are unchanged from the earlier #200 tip; this update is freshness, not an API move.",
         "read_at": "refs/pull/200/head",
         "access": "read-only git fetch; no runtime or test-time dependency"
       },
