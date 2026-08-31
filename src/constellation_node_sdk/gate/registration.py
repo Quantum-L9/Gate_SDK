@@ -18,7 +18,14 @@ _GENERATED_BY = "constellation-node-sdk"
 # Keys the SDK derives itself. A caller cannot smuggle a different value for
 # these through `metadata`, so `metadata` stays control-plane metadata rather
 # than becoming a generic payload escape hatch.
-_RESERVED_METADATA_KEYS = frozenset({"owner", "version", "type", "generated_by"})
+# Maps each reserved metadata key to the NodeRegistration field that sets it,
+# so the rejection tells the caller what to do instead of only what not to do.
+_RESERVED_METADATA_KEYS: dict[str, str] = {
+    "owner": "owner",
+    "version": "version",
+    "type": "node_type",
+    "generated_by": "(derived by the SDK; not settable)",
+}
 
 
 class NodeRegistration(BaseModel):
@@ -126,8 +133,8 @@ class NodeRegistration(BaseModel):
                 raise ValueError("metadata keys must not be blank")
             if key in _RESERVED_METADATA_KEYS:
                 raise ValueError(
-                    f"metadata key {key!r} is derived by the SDK; set the matching "
-                    "NodeRegistration field instead"
+                    f"metadata key {key!r} is derived by the SDK; set "
+                    f"NodeRegistration.{_RESERVED_METADATA_KEYS[key]} instead"
                 )
             if not isinstance(raw_value, str):
                 raise ValueError(

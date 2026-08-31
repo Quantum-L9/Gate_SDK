@@ -346,3 +346,80 @@ def test_execute_documents_the_failures_it_raises() -> None:
         "GateResponseError",
     ):
         assert name in doc, name
+
+
+# ---------------------------------------------------------------------------
+# Outbound ordering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_routing_policy_is_checked_before_signing() -> None:
+    """
+    A packet that must not leave is rejected before any crypto runs.
+
+    Signing a packet the client is about to refuse to send is wasted work, and
+    it would surface a signing-configuration error where a routing violation is
+    the real problem.
+    """
+    from constellation_node_sdk.transport.packet import create_transport_packet
+    from constellation_node_sdk.transport.provenance import RoutingProvenance
+
+    peer_targeted = create_transport_packet(
+        action="converge",
+        payload={"entity_id": "42"},
+        tenant="tenant-a",
+        source_node="odoo",
+        destination_node="enrich",
+        reply_to="odoo",
+        provenance=RoutingProvenance(
+            origin_kind="node",
+            requested_action="converge",
+            resolved_by_gate=False,
+            original_source_node="odoo",
+        ),
+    )
+    # Signing configuration is simultaneously broken: a signing key with no key
+    # id. Policy must still win, because it is the actual defect.
+    client, transport = _client(
+        gate_echo_responder({}),
+        signing_key="secret",
+        signing_key_id=None,
+        signing_algorithm=None,
+    )
+
+    with pytest.raises(GatePolicyError):
+        await client.send_to_gate(peer_targeted)
+
+    assert transport.requests == []
+
+
+@pytest.mark.asyncio
+async def test_outbound_transport_validation_judges_the_signed_packet(
+    domain_payload: dict[str, Any],
+) -> None:
+    """
+    With ``require_signature=True`` a self-signing node can actually send.
+
+    Validating before signing checked an artifact that differed from the one
+    sent, and rejected every packet for a signature it was about to add.
+    """
+    import json
+
+    transport = RecordingTransport(gate_echo_responder({"state": "completed"}))
+    client = GateClient(
+        make_client_config(
+            require_signature=True,
+            signing_key="shared-secret",
+            signing_key_id="odoo-key-1",
+            signing_algorithm="hmac-sha256",
+            verifying_keys={"odoo-key-1": "shared-secret"},
+        ),
+        transport=transport,
+    )
+
+    await client.execute(action="converge", payload=domain_payload, tenant="tenant-a")
+
+    sent = json.loads(transport.requests[0].content.decode("utf-8"))
+    assert sent["security"]["signature"] is not None
+    assert sent["security"]["signing_key_id"] == "odoo-key-1"

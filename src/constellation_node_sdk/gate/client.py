@@ -296,12 +296,21 @@ class GateClient:
                 direction="outbound",
             ) from exc
 
-    def _validate_outbound(self, packet: TransportPacket) -> None:
+    def _validate_routing_policy(self, packet: TransportPacket) -> None:
+        """
+        Reject a packet that must not leave this node, before any crypto runs.
+
+        Routing policy is cheap and unconditional, so it goes first: there is no
+        reason to sign a packet we are about to refuse to send.
+        """
         validate_outbound_gate_packet(
             packet,
             local_node=self._config.local_node,
             gate_node_name=self._config.allowed_gate_destination,
         )
+
+    def _validate_outbound_transport(self, packet: TransportPacket) -> None:
+        """Validate the signed packet — the exact artifact that goes on the wire."""
         try:
             validate_transport_packet(
                 packet,
@@ -414,13 +423,15 @@ class GateClient:
 
         Exactly one HTTP request is performed. There is no hidden retry.
         """
-        # Sign first, then validate: outbound validation must judge the exact
-        # packet that goes on the wire. Validating the unsigned packet both
-        # checks the wrong artifact and makes `require_signature=True`
-        # unusable for a node that signs its own traffic — it would reject
-        # every packet for a missing signature it was about to add.
+        # Policy first (cheap, no crypto), then sign, then validate the signed
+        # packet. Transport validation must judge the exact artifact that goes
+        # on the wire: validating the unsigned packet both checks the wrong
+        # thing and makes `require_signature=True` unusable for a node that
+        # signs its own traffic — it would reject every packet for a missing
+        # signature it was about to add.
+        self._validate_routing_policy(packet)
         signed_packet = self._maybe_sign(packet)
-        self._validate_outbound(signed_packet)
+        self._validate_outbound_transport(signed_packet)
         timeout_seconds = self._network_timeout_seconds(signed_packet)
 
         response = await self._post_json(

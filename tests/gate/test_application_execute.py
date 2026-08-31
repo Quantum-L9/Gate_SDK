@@ -210,16 +210,16 @@ async def test_execute_accepts_every_tenant_form(
     config: GateClientConfig, domain_payload: dict[str, Any], tenant: TenantContext
 ) -> None:
     """A tenant id, a mapping, and a TenantContext are all valid business inputs."""
-    forms: list[Any] = [
-        "tenant-a",
-        {"actor": "tenant-a", "on_behalf_of": "tenant-a", "originator": "odoo"},
-        tenant,
+    forms: list[tuple[Any, str]] = [
+        ("tenant-a", "tenant-a"),
+        ({"actor": "tenant-a", "on_behalf_of": "tenant-a", "originator": "odoo"}, "tenant-a"),
+        (tenant, tenant.actor),
     ]
-    for form in forms:
+    for form, expected_actor in forms:
         transport = RecordingTransport(gate_echo_responder({"state": "completed"}))
         client = GateClient(config, transport=transport)
         await client.execute(action="converge", payload=domain_payload, tenant=form)
-        assert transport.sent_packet(0)["tenant"]
+        assert transport.sent_packet(0)["tenant"]["actor"] == expected_actor
 
 
 @pytest.mark.asyncio
