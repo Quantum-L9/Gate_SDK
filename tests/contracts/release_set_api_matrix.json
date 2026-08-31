@@ -1,0 +1,376 @@
+{
+  "schema": "gate-sdk.release-set-api-matrix/v1",
+  "purpose": "Lock the Gate_SDK public API surface actually consumed by the coordinated Odoo -> Gate -> EIE release set. Every entry was read out of the consuming repository at the call site named in `call_sites`; nothing here is aspirational. Removing or incompatibly changing anything listed must fail this repository's own test suite rather than surface days later inside an application repository.",
+  "not_a_runtime_dependency": "The consuming repositories are never imported, installed, or contacted by these tests. This file is a transcription of their call sites, not a link to them.",
+  "consumers": {
+    "odoo": {
+      "repository": "cryptoxdog/IB-Odoo_19",
+      "role": "rail origin \u2014 mints the request packet and sends it to Gate",
+      "call_sites": [
+        "plasticos_gate/services/gate_client.py",
+        "plasticos_gate/services/gate_config.py"
+      ],
+      "imports": [
+        {
+          "module": "constellation_node_sdk",
+          "symbols": [
+            "GateClient",
+            "GateClientConfig",
+            "create_transport_packet"
+          ]
+        }
+      ],
+      "signatures": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "create_transport_packet",
+          "keyword_parameters": [
+            "action",
+            "payload",
+            "tenant",
+            "source_node",
+            "destination_node",
+            "reply_to",
+            "correlation_id",
+            "classification",
+            "compliance_tags",
+            "idempotency_key",
+            "timeout_ms"
+          ],
+          "observed_call_site_keywords": [
+            "action",
+            "payload",
+            "tenant",
+            "source_node",
+            "destination_node",
+            "reply_to",
+            "correlation_id",
+            "classification",
+            "compliance_tags"
+          ]
+        }
+      ],
+      "members": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "GateClient",
+          "attributes": [
+            "send_to_gate",
+            "health",
+            "gate_url"
+          ]
+        }
+      ],
+      "model_fields": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "GateClientConfig",
+          "fields": [
+            "gate_url",
+            "local_node",
+            "timeout_seconds",
+            "allowed_gate_destination"
+          ]
+        }
+      ],
+      "behaviors": [
+        "idempotency_key_carried_verbatim",
+        "timeout_ms_carried_verbatim",
+        "canonical_packet_response_only",
+        "gate_is_the_only_egress_url",
+        "no_client_side_retry"
+      ]
+    },
+    "gate": {
+      "repository": "Quantum-L9/Constellation.Gate",
+      "role": "rail hub \u2014 validates ingress, derives the worker packet, returns the response packet",
+      "call_sites": [
+        "constellation-gate/src/constellation_gate/routing/dispatch.py",
+        "constellation-gate/src/constellation_gate/boundary/delegation_factory.py",
+        "constellation-gate/src/constellation_gate/boundary/replay_factory.py",
+        "constellation-gate/src/constellation_gate/boundary/response_factory.py",
+        "constellation-gate/src/constellation_gate/boundary/failure_factory.py",
+        "constellation-gate/src/constellation_gate/boundary/ingress_validator.py",
+        "constellation-gate/src/constellation_gate/boundary/transport_codec.py",
+        "constellation-gate/src/constellation_gate/orchestration/workflow_engine.py"
+      ],
+      "imports": [
+        {
+          "module": "constellation_node_sdk.transport.packet",
+          "symbols": [
+            "TransportPacket",
+            "create_transport_packet"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.provenance",
+          "symbols": [
+            "RoutingProvenance"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.hashing",
+          "symbols": [
+            "compute_transport_hash"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.hop_trace",
+          "symbols": [
+            "make_ingress_hop",
+            "make_dispatch_hop"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.security.validation",
+          "symbols": [
+            "validate_transport_packet"
+          ]
+        }
+      ],
+      "signatures": [
+        {
+          "module": "constellation_node_sdk.transport.packet",
+          "symbol": "TransportPacket.derive",
+          "keyword_parameters": [
+            "packet_type",
+            "action",
+            "source_node",
+            "destination_node",
+            "reply_to",
+            "payload",
+            "provenance",
+            "hop",
+            "delegation_link",
+            "governance",
+            "timeout_ms",
+            "replay_mode"
+          ],
+          "observed_call_site_keywords": [
+            "packet_type",
+            "action",
+            "source_node",
+            "destination_node",
+            "reply_to",
+            "payload",
+            "provenance",
+            "timeout_ms"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.hop_trace",
+          "symbol": "make_ingress_hop",
+          "keyword_parameters": [
+            "packet",
+            "node",
+            "action",
+            "status"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.hop_trace",
+          "symbol": "make_dispatch_hop",
+          "keyword_parameters": [
+            "packet",
+            "node",
+            "action",
+            "target_node",
+            "status"
+          ]
+        }
+      ],
+      "members": [
+        {
+          "module": "constellation_node_sdk.transport.packet",
+          "symbol": "TransportPacket",
+          "attributes": [
+            "derive",
+            "with_hop",
+            "model_dump_json_dict",
+            "model_validate"
+          ]
+        }
+      ],
+      "model_fields": [
+        {
+          "module": "constellation_node_sdk.transport.packet",
+          "symbol": "TransportPacket",
+          "fields": [
+            "header",
+            "address",
+            "tenant",
+            "payload",
+            "security",
+            "governance",
+            "provenance",
+            "delegation_chain",
+            "hop_trace",
+            "lineage",
+            "attachments"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.models",
+          "symbol": "TransportHeader",
+          "fields": [
+            "packet_id",
+            "packet_type",
+            "action",
+            "timeout_ms",
+            "idempotency_key",
+            "trace_id",
+            "correlation_id",
+            "causation_id",
+            "retry_count",
+            "replay_mode"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.models",
+          "symbol": "TransportLineage",
+          "fields": [
+            "parent_id",
+            "root_id",
+            "generation"
+          ]
+        }
+      ],
+      "behaviors": [
+        "correlation_id_constant_across_generations",
+        "causation_id_names_the_immediate_parent",
+        "lineage_root_never_moves",
+        "idempotency_key_carried_verbatim",
+        "timeout_ms_carried_verbatim",
+        "hop_append_leaves_transport_hash_untouched"
+      ]
+    },
+    "eie": {
+      "repository": "Quantum-L9/Enrichment.Inference.Engine",
+      "role": "rail worker \u2014 hosts the SDK runtime, registers action handlers, returns the response payload",
+      "call_sites": [
+        "app/main.py",
+        "app/services/chassis_handlers.py",
+        "app/engines/orchestration_layer.py",
+        "app/engines/packet_router.py",
+        "app/engines/graph_sync_client.py",
+        "app/services/graph_return_channel.py",
+        "app/services/contract_enforcement.py"
+      ],
+      "imports": [
+        {
+          "module": "constellation_node_sdk",
+          "symbols": [
+            "LifecycleHook",
+            "NodeRuntimeConfig",
+            "create_node_app"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.runtime.handlers",
+          "symbols": [
+            "register_handler",
+            "registered_actions",
+            "clear_handlers"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.runtime.execution",
+          "symbols": [
+            "execute_transport_packet"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport",
+          "symbols": [
+            "TransportPacket",
+            "create_transport_packet"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.transport.errors",
+          "symbols": [
+            "TransportValidationError"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.gate",
+          "symbols": [
+            "GateClient",
+            "GateClientConfig"
+          ]
+        }
+      ],
+      "signatures": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "create_node_app",
+          "keyword_parameters": [
+            "service_name",
+            "version",
+            "lifecycle_hook",
+            "config",
+            "auto_register_with_gate"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk.runtime.execution",
+          "symbol": "execute_transport_packet",
+          "keyword_parameters": [
+            "node_name",
+            "allowed_actions",
+            "dev_mode",
+            "require_signature"
+          ]
+        }
+      ],
+      "members": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "LifecycleHook",
+          "attributes": [
+            "startup",
+            "shutdown"
+          ]
+        }
+      ],
+      "model_fields": [
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "NodeRuntimeConfig",
+          "fields": [
+            "environment",
+            "node_name",
+            "service_name",
+            "service_version",
+            "dev_mode",
+            "gate_url",
+            "allowed_actions"
+          ]
+        }
+      ],
+      "behaviors": [
+        "dispatch_is_by_header_action",
+        "handler_receives_the_payload_unchanged",
+        "response_payload_is_returned_unchanged",
+        "runtime_enforces_the_packet_timeout",
+        "no_runtime_retry"
+      ]
+    }
+  },
+  "behavior_proofs": {
+    "idempotency_key_carried_verbatim": "tests/transport/test_idempotency_propagation.py::test_create_transport_packet_stores_idempotency_key_verbatim",
+    "timeout_ms_carried_verbatim": "tests/transport/test_timeout_propagation.py::test_custom_timeout_survives_serialization_boundary",
+    "canonical_packet_response_only": "tests/gate/test_malformed_gate_response.py::test_bare_domain_dict_is_not_accepted_as_a_response",
+    "gate_is_the_only_egress_url": "tests/gate/test_client_transport_discipline.py::test_gate_client_config_exposes_no_peer_url_surface",
+    "no_client_side_retry": "tests/gate/test_retry_neutrality.py::test_gate_client_makes_exactly_one_http_attempt",
+    "correlation_id_constant_across_generations": "tests/transport/test_correlation_causation.py::test_three_generation_chain_keeps_one_correlation_and_walks_causation",
+    "causation_id_names_the_immediate_parent": "tests/transport/test_correlation_causation.py::test_three_generation_chain_keeps_one_correlation_and_walks_causation",
+    "lineage_root_never_moves": "tests/integration/test_canonical_round_trip_specimen.py::test_canonical_round_trip_preserves_lineage_and_causation",
+    "hop_append_leaves_transport_hash_untouched": "tests/transport/test_adversarial_integrity.py::test_hop_append_is_observational_only",
+    "dispatch_is_by_header_action": "tests/runtime/test_domain_transparency.py::test_dispatch_is_by_header_action_not_payload_shape",
+    "handler_receives_the_payload_unchanged": "tests/integration/test_canonical_round_trip_specimen.py::test_worker_handler_receives_the_exact_opaque_payload",
+    "response_payload_is_returned_unchanged": "tests/integration/test_canonical_round_trip_specimen.py::test_response_payload_reflects_the_handler_response_exactly",
+    "runtime_enforces_the_packet_timeout": "tests/runtime/test_failure_and_timeout_boundaries.py::test_runtime_enforces_the_packet_timeout_budget",
+    "no_runtime_retry": "tests/gate/test_retry_neutrality.py::test_worker_runtime_invokes_the_handler_exactly_once"
+  }
+}
