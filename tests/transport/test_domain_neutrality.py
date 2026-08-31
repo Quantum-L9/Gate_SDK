@@ -37,6 +37,10 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, str], ...] = (
 )
 
 
+# Node types whose body may open with a docstring.
+DOCSTRING_OWNERS = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+
 def _source_modules() -> list[Path]:
     return sorted(path for path in SRC_ROOT.rglob("*.py"))
 
@@ -44,9 +48,7 @@ def _source_modules() -> list[Path]:
 def _strip_docstrings(tree: ast.AST) -> None:
     """Drop docstring expressions in place so prose is not scanned as code."""
     for node in ast.walk(tree):
-        if not isinstance(
-            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-        ):
+        if not isinstance(node, DOCSTRING_OWNERS):
             continue
         body = node.body
         if (
