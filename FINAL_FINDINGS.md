@@ -1,597 +1,561 @@
-# FINAL_FINDINGS — Gate_SDK transport closure
+# FINAL_FINDINGS — Gate_SDK PR #40
 
 # Executive Verdict
 
-**GO for merge.** Gate_SDK now exposes a sufficient application transport
-closure. A business application reaches Gate through one call carrying business
-inputs only; every transport mechanic it previously performed itself is owned by
-the SDK.
+**GO for merge.** Gate_SDK now owns canonical transport on **both sides of
+Gate**. An application reaches Gate through one call and cannot reach anything
+else; Gate reaches its resolved worker through one call and needs no HTTP code
+of its own. Neither capability weakens the other: the surface that addresses a
+worker validates Gate's authority on the *packet*, so an application that
+imports it still cannot use it.
 
-Nothing in the wire contract changed. `contracts/transport-packet.schema.json`
-regenerates byte-identical, and `TransportPacket`, hashing, `derive()`, and hop
-semantics are untouched. This was an abstraction closure over existing
-primitives, not a protocol revision.
+The wire contract is untouched. `src/constellation_node_sdk/transport/` has no
+diff against `main`, and `contracts/transport-packet.schema.json` regenerates
+byte-identical.
 
-One external blocker exists and is **not** caused by this branch: one
-Constellation.Gate test fails identically against Gate_SDK `main`. It is a stale
-assertion in Gate, is deferred with an owner, and does not affect Gate's runtime.
+The external blocker this PR previously carried is **closed**: Constellation.Gate
+fixed its stale hop-count assertion on its own branch, and that branch's full
+suite passes against this candidate. One pre-existing dependency-audit failure
+remains, red on `main` too, and is not this PR's to resolve.
 
 # Repository / Branch / Candidate HEAD
 
 | Field | Value |
 |---|---|
 | Repository | `Quantum-L9/Gate_SDK` |
+| Pull request | [#40](https://github.com/Quantum-L9/Gate_SDK/pull/40) |
 | Branch | `claude/gate-sdk-transport-closure-u2klcf` |
-| Candidate HEAD | `6225f75ae185dd6fff98a12c670898a536069392` |
-| Pull request | [#40](https://github.com/Quantum-L9/Gate_SDK/pull/40) (base `main`) — CI green except `gate-5-dep-audit`, which is red on `main` too |
-| Base (`main`) at start | `d09fe58a6cd68ef8aa883896c68badc95f96e090` |
+| Candidate HEAD | `08413cd17ff9b52bbf4fc3088a63a760372345c9` |
+| Base (`origin/main`) | `d09fe58a6cd68ef8aa883896c68badc95f96e090` |
 | Package version | `1.0.1` (unchanged) |
 | `requires-python` | `>=3.12` (unchanged) |
 | cryptography constraint | `>=43.0.0,<45` (unchanged — deliberately not relaxed) |
-| Open local changes at start | none tracked (`.claude/` untracked, session-managed, not committed) |
 
-Peer repositories, read-only, at these heads:
+The delta contract named `6225f75` as the previously-audited candidate. That was
+stale by two commits; the branch was at `d7f85d7` when this pass began, verified
+against the PR API rather than assumed.
 
-| Repository | HEAD |
-|---|---|
-| `Quantum-L9/Constellation.Gate` | `545eda4259121dbce85c084385f68d00632981d7` |
-| `Quantum-L9/Enrichment.Inference.Engine` | `cfda45043477bfe4a0f2a8c249ff9be30d1705aa` |
-| `cryptoxdog/IB-Odoo_19` | `ce8ff00a51fffc73119160df99a9bca9af39b6c6` |
+Peer repositories, read-only:
+
+| Repository | Ref | HEAD |
+|---|---|---|
+| `Quantum-L9/Constellation.Gate` | `main` | `545eda4259121dbce85c084385f68d00632981d7` |
+| `Quantum-L9/Constellation.Gate` | `claude/gate-routing-sdk-transport-4btf4g` | `4778fee795c19732b41cf05da070b90dee89ecef` |
+| `Quantum-L9/Enrichment.Inference.Engine` | `main` | `cfda45043477bfe4a0f2a8c249ff9be30d1705aa` |
+| `cryptoxdog/IB-Odoo_19` | working branch | `ce8ff00a51fffc73119160df99a9bca9af39b6c6` |
 
 No peer repository was edited.
 
-# Initial Capability Gaps
+# Existing PR #40 Closure State
 
-Each gap below was read out of a consuming repository, not inferred.
+Every capability from the first pass survives, re-asserted by the suite:
 
-| # | Gap | Evidence |
+| Property | State | Guarded by |
 |---|---|---|
-| 1 | No application-level call. Applications assembled `create_transport_packet(...)` + `send_to_gate(...)` themselves. | `plasticos_gate/services/gate_client.py::send_action` builds the packet, names `destination_node="gate"`, and derives tenant/source/reply-to. |
-| 2 | Two deadlines the consumer had to keep in step. | Same file: `timeout_ms=int(float(config.timeout_seconds) * 1000)`, with a code comment explaining that the SDK would otherwise advertise 30s while the caller waited for something else. |
-| 3 | No typed failure surface. | Same file ships `classify_transport_failure()` — a 40-line substring matcher over `str(exc)` with `_RETRYABLE_TOKENS` / `_PERMANENT_TOKENS` lists. |
-| 4 | Timeout failures carried no reason. | Comment recorded in the same file: an exhausted budget raised httpx `ConnectTimeout` with `str(exc) == ""`, so the operator saw `"Gate enrichment failed (retryable): "` and the run stored `validation_issues=[""]`. |
-| 5 | Registration could not emit `metadata.owner`. | EIE `app/services/gate_registration.py` docstring: *"the SDK's `build_registration_payload` does not emit `metadata.owner`"*. Gate requires it — `routing/action_ownership.py::assert_registration_ownership` raises `canonical action ... requires metadata.owner` for `converge`, `graph-inference-result`, `match`, `sync`, `outcomes`. |
-| 6 | Registration was reachable only through a `spec.yaml` on disk. | EIE builds its registration from `Settings`, so it wrote its own `httpx` admin client. |
-| 7 | Docs described an API that did not exist. | `docs/gate-client.md` documented `client.execute(action=..., payload=..., tenant=...)` before this branch. The design was right; the implementation was missing. |
+| `GateClient.execute()` present | yes | `test_one_call_carries_business_inputs_only` |
+| Caller must build a packet | no | `test_execute_accepts_no_packet_argument` |
+| Application can name a peer | no | `test_gate_client_still_cannot_reach_a_worker` |
+| One budget → packet + socket | yes | `test_caller_budget_reaches_both_the_packet_and_the_socket` |
+| Hidden application retry | none | `test_execute_performs_exactly_one_request` |
+| Typed transport taxonomy | yes | `test_every_gate_error_descends_from_one_base` |
+| Registration `metadata.owner` | yes | `test_owner_reaches_gate_as_metadata_owner` |
+| Sign before transport validation | yes | `test_outbound_transport_validation_judges_the_signed_packet` |
+| Wire contract changed | no | schema regenerates identical |
 
-# Final Public API
+`GateClient` gained nothing. Its architectural statement — *it never accepts an
+arbitrary peer URL* — is unchanged and re-asserted structurally.
 
-Application surface — the whole outbound integration:
+# Gate-Authorized Worker Transport API
 
 ```python
-response = await client.execute(
-    action="converge",
-    payload=domain_payload,
-    tenant="tenant-a",
-    idempotency_key="erp:enrichment:run-4711",
-    timeout_ms=25_000,
-    correlation_id="run-4711",
+from constellation_node_sdk.gate_authority import (
+    GateDispatchTransport,
+    GateDispatchTransportConfig,
+)
+
+transport = GateDispatchTransport(
+    GateDispatchTransportConfig(local_gate_node="gate"),
+    client=pooled_httpx_client,          # optional; reused across dispatches
+)
+
+response = await transport.send_gate_authored_packet(
+    packet=dispatch_packet,              # Gate derived and hopped it
+    target_node=target.node_name,        # Gate resolved it
+    worker_base_url=target.internal_url, # Gate's registry knows it
 )
 ```
 
-Parameters: `action`, `payload`, `tenant`, `idempotency_key`, `timeout_ms`,
-`correlation_id`, `trace_id`, `classification`, `compliance_tags`,
-`retention_days`, `priority`. All business concerns; no transport mechanics.
+Signature parameters are exactly `{packet, target_node, worker_base_url}` —
+asserted, so a routing or timeout parameter cannot appear unnoticed.
 
-There is **no** `destination_node`, `peer_url`, `worker_url`, or `url`
-parameter, and no parameter annotated `TransportPacket`. Both are asserted by
-`tests/gate/test_consumer_architecture_guard.py`.
+**Two deliberate departures from Gate's requested shape**
+(`GATE_SDK_REQUIRED_DELTA.md` asked for `target_url` and `timeout_seconds`):
 
-Preserved protocol primitives (unchanged): `create_transport_packet()`,
-`TransportPacket.derive()`, `TransportPacket.with_hop()`,
-`GateClient.send_to_gate()`, `create_node_app()`, orchestrator `StepExecutor`.
+1. `worker_base_url`, not `target_url`. The SDK appends `/v1/execute` itself. A
+   caller-supplied endpoint would make the execution path a registry value, and
+   a registry value is what a misconfiguration or an attacker gets to change.
+   Paths, queries, and fragments are rejected.
+2. **No `timeout_seconds`.** See *Deadline Semantics* — accepting it would have
+   preserved the exact two-deadline split this closure removes.
 
-New exports: `NodeRegistration`, `register_node`, `build_node_registration`,
-`GateConfigurationError`, `GateConnectionError`, `GateHTTPError`,
-`GateSecurityError`, `GateTimeoutError` (plus the previously-defined
-`GateClientError`, `GatePolicyError`, `GateResponseError`,
-`GateRegistrationError`, now reachable from the package root).
+Both departures are narrower than what was asked for, not broader.
 
-New config fields: `max_timeout_ms` (default `None`), `transport_margin_ms`
-(default `0`).
+# Gate Authority Validation
 
-New keyword-only, defaulted `transport=` seam on `GateClient.__init__` — an
-SDK-internal test seam that carries no URL and cannot reach a peer node.
+Refused **before any network call** unless the packet is sourced from the
+configured Gate node, addressed to the named `target_node`, replied to Gate,
+`provenance.resolved_by_gate`, and `provenance.route_kind == "external_ingress"`.
 
-# Packet Construction State
+The bulk of that is not restated. It calls
+`runtime.inbound_policy.validate_execute_ingress_packet` — the same function
+every SDK-based worker applies on `/v1/execute` — so Gate cannot send a packet
+its worker would reject, and there is no second dialect to drift. `reply_to` is
+the single addition: a worker does not care where the answer goes, but a
+dispatch that does not return to Gate is not a Gate dispatch.
 
-`caller_manual_root_packet_required: false`.
+Also validated: non-blank target, and a base URL with a supported scheme, a
+host, no path, no query, no fragment.
 
-`execute()` builds the canonical root packet: destination is always
-`config.allowed_gate_destination`, source and reply-to are always
-`config.local_node`, and provenance is node-origin with
-`requested_action == header.action`. An application cannot construct a
-peer-targeted packet through this surface even by accident, because it never
-supplies a destination.
+# Application Peer-Escape Analysis
 
-The packet-native path is unchanged and still fails closed on a peer-targeted
-packet — now with `GatePolicyError` rather than a bare `ValueError`, and still
-before any network call.
+**Closed.** The guarantee is mechanical rather than documentary: *authority is on
+the packet, not the caller*. Importing `gate_authority` grants nothing, because
+an application cannot mint a packet that passes.
 
-# Deadline State
+| Attempt | Result |
+|---|---|
+| Node-authored packet + worker URL | `GateDispatchAuthorityError`, zero requests |
+| Client-authored packet + worker URL | `GateDispatchAuthorityError`, zero requests |
+| `resolved_by_gate=False` | rejected |
+| `route_kind` missing | rejected |
+| `route_kind="gate_relay"` | rejected |
+| `source_node != gate` | rejected |
+| `reply_to != gate` | rejected |
+| destination ≠ named target | rejected |
+| Application imports the module and tries anyway | rejected |
 
-One budget. `execute(timeout_ms=...)` (or `config.timeout_seconds` as the
-default) is written to `packet.header.timeout_ms`, and the real network deadline
-is derived from that same header value. `send_to_gate()` derives its deadline
-from the packet it was handed.
+Structurally guarded as well: the surface is exported from neither the package
+root nor `gate` (asserted, including `hasattr`), no public API anywhere is named
+`send_to_url` / `send_to_peer` / `post_packet` / `execute_peer` / `send_to_node`
+/ `dispatch_to_url`, `GateClient` has no method taking `url` / `peer_url` /
+`worker_url` / `destination_node` / `endpoint`, and the dispatch module's AST
+contains no routing construct and no `constellation_gate` import.
 
-Two explicit, off-by-default knobs: `max_timeout_ms` (hard ceiling, applied to
-both the header and the socket) and `transport_margin_ms` (subtractive
-reservation so the SDK raises a typed timeout before the caller's own deadline).
-A margin that consumes the budget is a `GateConfigurationError`, not a silent
-clamp.
+# Gate→Worker Deadline Semantics
 
-`tests/gate/test_deadline_closure.py` reads `request.extensions["timeout"]` —
-the deadline httpx actually applied — rather than the one the SDK claims.
+One number, three places:
 
-**Behavior change:** the network deadline previously came from
-`config.timeout_seconds` regardless of the packet. It now comes from the packet
-header. For any caller whose two values already agreed — including every
-consumer that computed one from the other — behavior is identical. For one where
-they disagreed, the packet's advertised budget now wins, which is strictly the
-safer direction.
+```
+root budget        30,000 ms
+elapsed in Gate    28,000 ms
+worker cap         25,000 ms
+                   ↓ min(remaining, cap)
+child.header.timeout_ms   2,000 ms   ← what the worker is told
+actual socket timeout       2.0 s    ← what Gate waits
+worker handler budget       2.0 s    ← what the worker enforces
+```
+
+Proven by `test_remaining_budget_drives_socket_and_worker_alike`, which reads
+the timeout httpx actually applied and instruments the worker runtime's own
+`asyncio.wait_for`, rather than asserting the SDK's intent.
+
+### Required Constellation.Gate consumer change
+
+Gate's dispatcher computes the remaining budget correctly
+(`_attempt_timeout_seconds`, ADR-GATE-008) but **never writes it into the
+packet**. Its `derive(...)` call omits `timeout_ms`, so the child inherits the
+parent's full budget: today Gate waits 2s on a socket while telling the worker
+it has 30s.
+
+```python
+dispatch_base = ingress_observed.derive(
+    ...,
+    timeout_ms=self._attempt_timeout_seconds(...) * 1000,   # ← currently absent
+)
+```
+
+This is the single required consumer change. Had the SDK accepted
+`timeout_seconds`, that split would have been preserved permanently, which is
+why the parameter does not exist.
+
+# Signing / Validation State
+
+Order is **routing policy → sign → transport validation of the signed artifact →
+network**. Policy runs first because it is cheap and unconditional: there is no
+reason to spend a signature on a packet about to be refused. Validation runs
+after signing so it judges the exact bytes sent.
+
+If signing material is configured but incomplete, the dispatch fails with
+`GateDispatchConfigurationError` **before** the network. No second crypto
+implementation exists: signing and validation call the same
+`security.signing` / `security.validation` primitives as the rest of the SDK.
+
+# Worker Response Validation
+
+Returns a validated `TransportPacket`, never a dict or a raw response. Before
+returning, the SDK proves the answer belongs to *this* dispatch: worker
+identity, destination back to Gate, action, root lineage, causation, tenant,
+correlation, and idempotency. A canonical, correctly signed packet from the
+wrong worker is still the wrong answer, and is rejected
+(`test_a_response_from_the_wrong_worker_is_rejected`).
+
+Integrity failures raise `GateDispatchSecurityError`, not a response error —
+collapsing them would invite Gate to treat tampering as a dialect problem and
+retry into it. Unknown or missing required signing keys fail closed.
+
+Every response fixture in these tests is produced by the **real**
+`execute_transport_packet`, not hand-written. A fixture that agreed only with
+the client under test would prove the client consistent with itself and nothing
+about whether a real worker accepts what Gate sends.
 
 # Retry State
 
-`hidden_application_retries: false`.
+`worker_network_attempts: 1`.
 
-`execute()` and `send_to_gate()` perform exactly one POST. Proven by request
-count, not by absence of retry code:
-`test_execute_performs_exactly_one_request`, the parametrized
-`test_gate_client_does_not_retry_a_retryable_looking_status` (429/500/502/503/504),
-dead-socket and read-timeout cases, and
-`test_the_rail_performs_exactly_one_execution` across the full rail.
-`GateClientConfig` exposes no retry field.
+Proven by request count, not by absence of retry code: no retry on 400, 401,
+403, 404, 409, 422, 429, 500, 502, 503, 504, on a dead socket, or on a read
+timeout. `GateDispatchTransportConfig` exposes no retry or attempt field.
 
-Registration retries — bounded, visible backoff `[1.0, 2.0]`, asserted in
-`test_registration_retry_is_bounded_and_visible` — because it is control-plane
-reconciliation, not application execution. A Gate rejection (400/401/403/409/422)
-is never retried.
+Gate owns whole-operation replay, because only Gate holds the operation's
+idempotency key and its remaining deadline. A hidden retry here would
+double-execute a domain operation.
 
-# Idempotency State
-
-Caller owns business identity; the SDK owns its transport slot. The value is
-placed into `header.idempotency_key` verbatim
-(`test_execute_carries_caller_idempotency_verbatim`), and an absent key stays
-absent — no payload hash is substituted
-(`test_execute_without_idempotency_key_invents_nothing`). It survives Gate's
-derivation to the worker (`test_transport_metadata_survives_gate_derivation`).
-
-# Error Taxonomy
+# Typed Worker Failure Surface
 
 ```
-GateClientError
-├── GateConfigurationError  (also ValueError)   local misconfiguration; never reached the wire
-├── GatePolicyError         (also ValueError)   outbound Gate-only routing violation
-├── GateSecurityError       (.direction)        signing / signature / integrity failure
-├── GateConnectionError                         Gate never reached; nothing ran
-├── GateTimeoutError        (also TimeoutError) deadline elapsed (.timeout_seconds)
-├── GateHTTPError           (.status_code, .response_text, .is_client_error, .is_server_error)
-├── GateResponseError       (also ValueError)   answer was not a canonical packet
-└── GateRegistrationError                       registration transport failure
+GateDispatchError
+├── GateDispatchAuthorityError      (also ValueError)   not a Gate-authored dispatch
+├── GateDispatchConfigurationError  (also ValueError)   transport/URL cannot express it
+├── GateDispatchSecurityError       (.direction)        signing / signature / integrity
+├── WorkerConnectionError                               worker unreachable; nothing ran
+├── WorkerTimeoutError              (also TimeoutError) budget elapsed (.timeout_seconds)
+├── WorkerHTTPError                 (.status_code, .is_server_error, .response_text)
+└── WorkerResponseError             (also ValueError)   not a canonical answer to this dispatch
 ```
 
-Every category is reachable, distinct, and chains `__cause__`. Deliberate
-separations:
+Deliberately a **separate hierarchy** from `GateClientError`: that one means "the
+call *to* Gate failed", and `GateConnectionError` would read as "could not reach
+Gate" while actually meaning a worker was down.
 
-- `GateTimeoutError` is not a `GateConnectionError`, despite
-  `httpx.TimeoutException` subclassing `httpx.TransportError` — an
-  order-of-except mistake would silently collapse them.
-- A tampered response raises `GateSecurityError`, not `GateResponseError`.
-  Collapsing them would let a caller treat a broken hash as a dialect problem
-  and retry into it.
+`raw_httpx_required_by_gate: false` — proven by a classifier built only from SDK
+types, correct across blank-string `ConnectTimeout`, `ConnectError`, 503, 422,
+and a non-canonical body. No failure message is empty, including for causes that
+stringify to `""`. Every cause is chained.
 
-No failure message is empty, including for causes that stringify to `""`
-(`test_no_gate_failure_message_is_empty`). A static guard asserts no
-`raise ValueError(` survives in `gate/client.py` or `gate/policy.py`.
+Gate can stop flattening transport failures into `RuntimeError`, which currently
+loses the cause entirely.
 
-The `ValueError` / `TimeoutError` co-inheritance is deliberate backward
-compatibility for the three categories that previously surfaced as `ValueError`.
+# Connection Lifecycle
 
-# Registration State
+`reusable_transport_supported: true`.
 
-`NodeRegistration` carries `node_name`, `internal_url`, `supported_actions`,
-`priority_class`, `max_concurrent`, `health_endpoint`, `timeout_ms`, `version`,
-`node_type`, `owner`, and `metadata`. `to_payload()` renders exactly the seven
-keys Gate's `extra="forbid"` schema accepts.
+Gate dispatches continuously, so a client per packet is a TCP handshake per
+packet. A pooled `httpx.AsyncClient` can be supplied and is reused across
+dispatches; its lifetime stays the caller's, and the transport never closes a
+client it did not create. As an async context manager it creates and closes one
+of its own. The per-dispatch deadline is applied per request, so a pooled
+client's own default timeout cannot widen a dispatch budget
+(`test_a_pooled_client_default_cannot_widen_the_packet_deadline`).
 
-`register_node()` registers from in-process configuration — no `spec.yaml`
-required. `build_node_registration()` / `register_with_gate()` keep the spec
-path, and both render an identical body
-(`test_spec_yaml_and_typed_registration_render_the_same_body`).
+This is not a new pooling framework — it is httpx used correctly.
 
-`metadata` stays control-plane metadata: values must be strings (Gate's schema is
-`dict[str, str]`), and the four SDK-derived keys (`owner`, `version`, `type`,
-`generated_by`) are reserved and rejected if supplied through `metadata`.
+Gate's own finding that its production dispatcher never actually receives its
+pooled client is a Gate-side wiring issue; the SDK now makes the correct wiring
+expressible and cheap.
 
-# Derive / Hop State
+# Constellation.Gate Consumability
 
-Unchanged. `git diff main..HEAD -- src/constellation_node_sdk/transport/` is
-empty.
+Verdict: **PASS.** Gate was not edited.
 
-Re-audited under the release-set harness rather than by reading:
+Gate's exact dispatch inputs were reproduced against the installed SDK. Ten
+proofs, all true: `_post_dispatch_packet` replaced by one call; no httpx
+serialization; no `response.json()` / `raise_for_status()` /
+`TransportPacket.model_validate` needed; endpoint built by the SDK; Gate's
+pooled client reused and left open; one attempt per dispatch; the 30000→2000ms
+budget derivation; socket equals header; worker handler equals both; and
+classification without httpx.
 
-- a Gate-derived child gets a new `packet_id`, `causation_id` = parent id,
-  `lineage.parent_id` = parent id, preserved `root_id`, `generation + 1`;
-- observation via `with_hop()` leaves `packet_id`, `transport_hash`, and
-  `payload_hash` byte-identical;
-- every hop on a child is bound to the child's own `packet_id`, and the child
-  validates in the real worker runtime.
+### Exact deletion / substitution plan
 
-The harness's Gate stand-in mirrors Constellation.Gate's own dispatch sequence —
-`with_hop` (ingress) → `derive` → `with_hop` (dispatch on the *derived* packet).
-My first version built the dispatch hop from the pre-derive packet and failed
-hop-trace validation, which is exactly the trap Gate documents in its own
-`dispatch.py`.
-
-# Security State
-
-No security default was weakened. `require_signature`,
-`verify_response_signatures`, `verify_hop_signatures`, and validation defaults
-are unchanged. Signature and integrity failures raise a dedicated
-`GateSecurityError` and are never swallowed.
-
-**Defect found and fixed:** `send_to_gate()` validated the outbound packet
-*before* signing it. Two consequences — outbound validation judged a different
-artifact than the one actually sent, and `require_signature=True` rejected every
-packet for a missing signature it was about to add, making self-signed traffic
-impossible.
-
-The outbound sequence is now: routing policy (cheap, no crypto) → sign →
-transport validation of the signed packet. Policy runs first so a packet that
-must not leave is refused before any crypto runs, and transport validation
-judges exactly the bytes that go on the wire. Covered by
-`test_a_signed_rail_round_trips`,
-`test_routing_policy_is_checked_before_signing`, and
-`test_outbound_transport_validation_judges_the_signed_packet`.
-
-# Dependency / Installability State
-
-No dependency was added, removed, or relaxed. The `cryptography>=43.0.0,<45`
-bound (added in `main` to match the Odoo.sh pyOpenSSL window) is untouched.
-
-| Proof | Result |
+| Gate code today | After adoption |
 |---|---|
-| Editable install, Python 3.12.3 | 612 passed |
-| Full suite, Python 3.13.12 | 612 passed |
-| Full suite, `cryptography==43.0.0` (declared lower bound) | 612 passed; security/transport subset 223 passed |
-| `python -m build --wheel` | wheel built |
-| Clean-directory wheel install, checkout stripped from `sys.path` | 17 passed (`tests/packaging/`) |
+| `_post_dispatch_packet()` (both branches, ~30 lines) | deleted |
+| `import httpx` in `routing/dispatch.py` | deleted |
+| `response.raise_for_status()` / `response.json()` / JSON-object check | deleted |
+| `TransportPacket.model_validate(response)` | deleted (SDK returns a packet) |
+| `except httpx.TransportError` → `RuntimeError` | `except GateDispatchError` subclasses |
+| `f"{target.internal_url}/v1/execute"` | pass `target.internal_url` as `worker_base_url` |
+| `timeout_seconds=self._attempt_timeout_seconds(...)` passed to the POST | **moved into `derive(timeout_ms=...)`** |
+| `WORKER_TRANSPORT_ADAPTER` guard scope | shrinks to empty |
 
-The installed-package harness builds the wheel from an exported copy, installs
-it into an empty directory, strips the repo `src/` and any editable finder from
-the child interpreter, and asserts in the child that the imported package really
-lives under the install directory. It now also proves the closure surface from
-the wheel: exports, a Gate-bound packet with the caller's budget on both the
-header and the socket, one attempt, the typed taxonomy with no blank reason, and
-a registration body carrying `metadata.owner`.
+What Gate keeps, correctly: target resolution, deadline arithmetic, per-node
+concurrency permits, registry active counts, and health marking. The SDK reports
+typed outcomes; Gate decides what they mean.
 
-No `--no-deps` proof is presented as the installability evidence.
+### Gate suites run against this candidate
 
-# Odoo Compatibility
-
-Verdict: **PASS.** Odoo was not edited; the proof reproduces its
-responsibilities against the installed SDK.
-
-| Odoo code today | After adoption |
+| Gate ref | Result |
 |---|---|
-| `send_action` — packet construction, tenant assembly, `destination_node="gate"` | one `client.execute(...)` call |
-| `timeout_ms=int(float(config.timeout_seconds) * 1000)` | deleted — SDK owns the deadline |
-| `MAX_GATE_TIMEOUT_SECONDS = 30.0` clamp | `GateClientConfig.max_timeout_ms` |
-| `classify_transport_failure()` + `_RETRYABLE_TOKENS` + `_PERMANENT_TOKENS` (~40 lines) | `isinstance` against the taxonomy |
-| `detail = str(exc) or type(exc).__name__` workaround | deleted — no typed failure has a blank reason |
-| `TransportFailureClass` enum | optional; the taxonomy carries the distinction |
+| `main` (`545eda4`) | 180 passed, **1 failed** — the pre-existing stale hop-count assertion |
+| `claude/gate-routing-sdk-transport-4btf4g` (`4778fee`) | **339 passed, 0 failed** |
 
-Verified against the installed SDK: `execute()` reproduces the outcome;
-destination forced to `gate` without a consumer constant; idempotency key
-carried verbatim; `timeout_ms` no longer computed by the caller (header 30000,
-applied socket read timeout 30.0s); the `MAX_GATE_TIMEOUT_SECONDS` clamp
-expressible as configuration; retryable/permanent classification correct across
-blank-string `ConnectTimeout`, `ConnectError`, 503, 403, and a non-canonical
-body; no failure with a blank reason; no `httpx` import needed.
+Before each run the imported `constellation_node_sdk` path and the presence of
+`send_gate_authored_packet` were printed and asserted, because Gate's own
+`pip install -e ".[dev]"` silently reinstalls its pinned SDK — a trap that
+invalidated an earlier run in the first pass.
 
-What Odoo would still own — correctly — is its domain: building the enrichment
-payload, deriving the durable run id, and mapping the response. That is the
-boundary ADR-SDK-009 draws.
+**The previously deferred external blocker is closed.** Gate's delta branch
+changes `assert len(posted_packet.hop_trace) == 2` to `== 1` with a comment
+matching the original diagnosis. It was closed by Gate, not by this PR.
 
-`plasticos_gate/services/gate_client.py` still needs its `_run_async` sync/async
-bridge; that is an Odoo-runtime concern, not transport, and is out of scope for
-the SDK.
+# Real SDK Worker Round Trip
 
-# EIE Compatibility
+The full rail runs against the genuine worker runtime:
 
-Verdict: **PASS.** EIE was not edited.
+```
+root packet → Gate ingress validation → ingress observation hop
+→ Gate derive (timeout_ms = remaining budget) → dispatch hop
+→ send_gate_authored_packet() → real /v1/execute ingress policy
+→ real execute_transport_packet() → registered handler
+→ canonical worker response → SDK response validation → Gate
+```
 
-EIE's `build_payload` output is reproduced exactly through `NodeRegistration`:
-`metadata.owner == "eie"` (the named gap), `health_endpoint ==
-"/api/v1/health"` (the other named gap), exact `supported_actions`, exact
-`version` and `type`, no `spec.yaml` on disk, and no key Gate's `extra="forbid"`
-schema would reject. Wire behavior matches EIE's hand-written client: same
-endpoint and `overwrite=true` param, same `X-Admin-Token` header, same non-fatal
-boolean result.
+Asserted: payload preserved byte-for-byte, tenant preserved, idempotency
+preserved, correlation preserved, root lineage preserved, new child packet id,
+correct causation, every child hop bound to the child's own packet id, worker
+response hop valid, response source is the dispatched worker, destination is
+Gate, one network request, one deadline.
 
-One deliberate difference: the SDK also sends `metadata.generated_by =
-"constellation-node-sdk"`, which EIE's hand-written payload omits. Gate's
-`metadata` is a free `dict[str, str]`, so it is accepted and ignored by
-ownership resolution. Flagged as a difference, not a defect.
+# Signed Round Trip
 
-`app/services/gate_registration.py` — the module, its `httpx` client, its retry
-and logging — becomes deletable in favor of `register_node(...)`. EIE's
-execution runtime already uses the SDK (`create_node_app`, `register_handler`,
-`execute_transport_packet`) and is unaffected.
+Gate signs the dispatch, the worker requires a signature, the worker signs its
+response, and Gate verifies it — end to end through the real runtime.
 
-# Constellation.Gate Compatibility
-
-Verdict: **PASS with one deferred external blocker.**
-
-Gate's own suite was run against this candidate at Gate HEAD
-`545eda4259121dbce85c084385f68d00632981d7`: **180 passed, 1 failed.**
-
-The failure is `tests/architecture/test_lineage_reentry.py::test_lineage_is_preserved_across_gate_reentry_and_dispatch`,
-asserting `len(posted_packet.hop_trace) == 2`.
-
-It is **not caused by this branch**. Established, not assumed:
-
-1. The same single failure occurs with Gate_SDK `main` (`d09fe58`) installed —
-   verified by installing `main` into the same Gate environment.
-2. `git diff main..HEAD -- src/constellation_node_sdk/transport/` is empty.
-3. Gate pins Gate_SDK at `a770e853`, which predates SDK commit `1d52369`
-   ("derive hop reset"). Gate's assertion encodes the pre-`1d52369` behavior.
-
-A methodological note: the first Gate run showed 181 passed, but Gate's own
-`pip install -e ".[dev]"` had silently replaced the candidate with its pinned
-git SHA. That run proved nothing about this branch and is not counted. The
-reported numbers are from a re-run after force-reinstalling the candidate and
-confirming `GateClient.execute` was present.
-
-Gate's **runtime is unaffected** — checked directly, not inferred. Driving
-Gate's real `Dispatcher` with the candidate SDK, the dispatched packet has
-correct lineage parent, preserved root, generation + 1, `resolved_by_gate=True`,
-passes `validate_transport_packet`, and is accepted by the SDK worker runtime.
-Only Gate's hop-count assertion is stale.
-
-SDK `main` is correct here: carrying parent hops into a child produces a packet
-that fails the SDK's own hop-trace validation, since `hop.packet_id` must equal
-the child's `packet_id`. Nothing was changed to accommodate the stale
-expectation.
-
-# Contract / Schema Alignment
-
-| Artifact | State |
-|---|---|
-| `contracts/transport-packet.schema.json` | regenerated, byte-identical — no wire change |
-| `scripts/validate_contracts.py` | PASS |
-| `contracts/NODE_REGISTRATION_SPEC.md` | updated: metadata, reserved keys, `metadata.owner`, both entry points, retry policy |
-| `contracts/TRANSPORT_PACKET_SPEC.md` | unchanged (correctly — the packet contract did not change) |
-| `contracts/ROUTING_POLICY_SPEC.md` | unchanged (correctly — routing law did not change) |
-| `tests/contracts/release_set_api_matrix.json` | **deliberately unchanged** — it transcribes what consumers call *today*, and its own header forbids aspirational entries. New-surface coverage went into `tests/packaging/` instead. |
-| `docs/gate-client.md` | rewritten against the real API |
-| `README.md`, `ARCHITECTURE.md`, `AGENTS.md`, `CHANGELOG.md` | updated |
-| `examples/application_client/` | added |
-
-# Tests Actually Executed
-
-| Command | Environment | Result |
-|---|---|---|
-| `pytest -q` (baseline, before changes) | py3.12.3 | 486 passed |
-| `pytest -q` | py3.12.3 | **612 passed** |
-| `pytest -q` | py3.13.12 | 612 passed |
-| `pytest -q` (`cryptography==43.0.0`) | py3.12.3 | 612 passed |
-| `pytest -q tests/security tests/transport` (`cryptography==43.0.0`) | py3.12.3 | 223 passed |
-| `pytest -q tests/packaging` (built + installed wheel) | py3.12.3 | 17 passed |
-| `ruff check src tests scripts examples` | py3.12.3 | All checks passed |
-| `mypy src` | py3.12.3 | Success, 42 source files |
-| `python scripts/validate_contracts.py` | py3.12.3 | all checks passed |
-| `python scripts/generate_schema.py` | py3.12.3 | byte-identical output |
-| `python -m build --wheel` | py3.12.3 | wheel built |
-| Gate suite vs candidate SDK | py3.12.3 | 180 passed, 1 failed (pre-existing) |
-| Gate suite vs SDK `main` | py3.12.3 | 180 passed, 1 failed (identical) |
-| Odoo consumability proof (8 assertions) | installed SDK | all true |
-| EIE registration proof (11 assertions) | installed SDK | all true |
-
-126 tests added.
+Negative cases fail closed: tampered response → `GateDispatchSecurityError`
+(`direction="inbound"`); unsigned response when signatures are required →
+security error; response signed by an unknown key → security error; incomplete
+Gate signing material → configuration error with **zero** requests.
 
 # Installed-Package Evidence
 
-Wheel `constellation_node_sdk-1.0.1-py3-none-any.whl` built with the project's
-own `pyproject.toml` and installed into an empty directory. In the child
-interpreter, with `src/` and editable finders removed, the package resolves under
-the install directory (asserted in the child on every call), `py.typed` ships, 67
-symbols export, `GateClient.execute` is present, and `execute()` produces a
-Gate-bound packet whose header budget (7000ms) and applied socket read timeout
-(7.0s) agree, in one attempt, with the typed taxonomy intact.
+Wheel built with the project's own `pyproject.toml`, installed into an empty
+directory, with the repo `src/` and any editable finder stripped from the child
+interpreter, which asserts in-child that the package resolves under the install
+directory.
+
+From the wheel: the `gate_authority` namespace ships with all ten exports and
+`send_gate_authored_packet`; it is absent from both application namespaces
+(`__all__` and `hasattr`); the full Gate→worker rail runs through the real
+worker runtime with `packet_timeout_ms == 2000`, socket `2.0`, handler `[2.0]`,
+one attempt, correct response routing, idempotency preserved; and a
+node-authored packet with a worker URL is refused with zero requests.
+
+# Wire Contract Diff
+
+```
+schema_changed:           false
+transport_hash_changed:   false
+derive_semantics_changed: false
+```
+
+`git diff main..HEAD -- src/constellation_node_sdk/transport/` is empty.
+`python scripts/generate_schema.py` produces no diff. This was an abstraction
+closure over existing primitives; no wire revision was smuggled in.
+
+# Security State
+
+No security default was weakened. Signing, verification, hop verification, and
+validation defaults are unchanged on both surfaces, and the new surface fails
+closed on every unresolvable key.
+
+The new authority check is itself a security control: it is what distinguishes a
+Gate transport from a peer client, and it is asserted to exist and to be wired
+into the send path, so a future edit that removes it fails the suite rather than
+silently opening node-to-node routing.
+
+Domain payloads remain opaque. The existing domain-neutrality guard `rglob`s the
+whole source tree, so all four new modules are scanned automatically — verified,
+not assumed.
+
+# Dependency Audit State
+
+```
+pr_owned_security_findings:      none
+preexisting_security_findings:   gate-5-dep-audit (cryptography advisories)
+external_dependency_blockers:    the pyOpenSSL / Odoo.sh coordination
+```
+
+This delta adds no dependency and introduces no new finding. `git diff
+main..HEAD -- pyproject.toml requirements*.txt` is empty.
+
+The standing failure: 7 advisories in `cryptography 44.0.3`, minimum fix
+`46.0.5`, against a deliberate `<45` ceiling. Verified against
+`IB-Odoo_19/requirements.txt` rather than a commit message — `<45` is exactly
+pyOpenSSL 24.3.0's declared range (cryptography 41.0.5–44.x), and exceeding it
+crashes the entire Odoo.sh registry on restart. Unblocking order is fixed:
+pyOpenSSL must be forward-pinned in IB-Odoo_19 first. Not relaxed, not
+suppressed, not touched.
 
 # Remaining Blocking Defects
 
 None in Gate_SDK.
 
-One CI check is red on the PR and is **not** this branch's: `gate-5-dep-audit`
-reports 7 advisories in `cryptography 44.0.3`. It is red on `main` (`d09fe58`)
-too, this branch touches no dependency manifest, and every fix version
-(46.0.5 … 50.0.0) sits above the deliberate `<45` ceiling set in #39 to keep
-IB-Odoo_19's `43.0.3` pin installable and stop pip floating past pyOpenSSL
-24.3.0. No fix is portable without reversing that decision, so none was ported
-and the security pin was not relaxed. Stood down with one comment on PR #40.
-
-Checked against the primary source rather than the pin's commit message:
-`IB-Odoo_19/requirements.txt` documents that `<45` is exactly the top of
-pyOpenSSL 24.3.0's declared range (cryptography 41.0.5–44.x), and that
-exceeding it crashes the **entire** Odoo.sh registry on restart — every module
-imports through `base`, not just `plasticos_*`. So the unblocking order is
-fixed: pyOpenSSL must first be forward-pinned in IB-Odoo_19 to a release whose
-range covers cryptography ≥ 46.0.5, and only then can the Gate_SDK ceiling
-move. That is a coordinated two-repo dependency decision with a
-production-severity failure mode, owned by the pin's author (#39) — not
-something to reverse inside a transport-abstraction PR.
+`gate-5-dep-audit` is red on the PR and on `main`; see *Dependency Audit State*
+and *External Blockers*. Stood down with one comment on PR #40.
 
 # Remaining Non-Blocking Defects
 
-1. **Leftover repo-root `build/` shadows the `build` frontend.** A previous
-   local `python -m build` leaves `build/`, after which `python -m build` inside
-   `tests/packaging/conftest.py` resolves the directory instead of the frontend
-   and every packaging test errors with a confusing "wheel build failed". CI
-   runs on a clean checkout so this is local-only. `make clean` resolves it.
-   Not fixed here: the fix belongs in the packaging harness (build from a temp
-   cwd) and is unrelated to this closure.
-2. **`metadata.generated_by` is sent where EIE's hand-written payload omitted
-   it.** Accepted by Gate, ignored by ownership resolution. Recorded as a
-   difference for anyone diffing registrations.
-3. **Legacy tests monkeypatch `httpx.AsyncClient` globally.** The
-   `route_gate_http` fixture predates the `transport=` seam. New tests use the
-   seam. Not migrated: churning working tests was out of scope.
-4. **SonarCloud S5332 on the `internal_url` fallback.** `build_node_registration`
-   defaults to `http://{node_id}:8000` when `spec.yaml` omits `internal_url`.
-   The line is pre-existing on `main` (`registration.py:55`) and was only
-   relocated by this refactor, which is why Sonar counts it as new code. It is
-   not changed to `https`: the value is a cluster-internal service address on
-   the container network, Gate's own `NodeRegistrationInput` accepts both
-   schemes for that reason, and every real node (EIE's
-   `http://enrichment-engine:8000`) would break. Suppressed with a stated
-   justification, matching the repository's existing `NOSONAR` precedent in
-   `tests/security/test_validation.py`. Deployments that terminate TLS between
-   nodes set `node.internal_url` explicitly.
+1. **Leftover repo-root `build/` shadows the `build` frontend** in
+   `tests/packaging`, producing a confusing "wheel build failed" locally. CI
+   runs on a clean checkout; `make clean` resolves it. The fix belongs in the
+   packaging harness (build from a temp cwd).
+2. **`metadata.generated_by`** is sent where EIE's hand-written payload omitted
+   it. Accepted by Gate, ignored by ownership resolution.
+3. **Legacy gate tests monkeypatch `httpx.AsyncClient` globally** rather than
+   using the `transport=` seam. New suites use the seam.
+4. **SonarCloud S5332** on the `internal_url` `http://` fallback — pre-existing
+   on `main`, relocated by the earlier refactor, suppressed with stated
+   justification. SonarCloud is green.
+
+# External Blockers
+
+| Blocker | State |
+|---|---|
+| Gate worker transport missing from the SDK | **CLOSED by this delta** |
+| Gate's stale `len(hop_trace) == 2` assertion | **CLOSED by Gate** on `claude/gate-routing-sdk-transport-4btf4g` |
+| `cryptography` advisories vs the pyOpenSSL ceiling | **OPEN** — owned by the pin's author (#39) plus IB-Odoo_19; unblocking requires a pyOpenSSL forward-pin first |
 
 # Scope Drift Audit
 
-No drift. Nothing was added outside the required set.
+No drift. Judgment calls, each defended above: the `worker_base_url` /
+`target_url` departure, the absent `timeout_seconds`, the separate error
+hierarchy, the private shared HTTP module, and the keyword-only `client` /
+`transport` seams.
 
-Two judgment calls worth naming:
-
-- **`max_timeout_ms` and `transport_margin_ms`** are new configuration, which
-  ADR-SDK-004 cautions against ("do not introduce a second deadline abstraction
-  if existing types suffice"). Neither is a second deadline: one is a ceiling on
-  the single budget, the other a subtractive reservation from it, and both
-  default to off. `max_timeout_ms` exists specifically so Odoo can delete its
-  `MAX_GATE_TIMEOUT_SECONDS` clamp — consumer-driven, not speculative.
-- **The `transport=` seam on `GateClient.__init__`** is new public surface. It
-  was required to test the deadline actually applied and the request count,
-  which is the difference between proving the closure and asserting it. It is
-  keyword-only, defaulted, carries no URL, and is guarded by a test that it
-  cannot become a peer-dispatch backdoor.
-
-Explicitly not done, per scope: no domain translation, no peer routing, no
-direct worker client, no Odoo- or EIE-specific SDK code, no security default
-change, no dependency relaxation, no protocol change, and no edits to any peer
-repository.
-
-# Deferred Work
-
-| Item | Owner | Removal trigger |
-|---|---|---|
-| Gate's stale `len(hop_trace) == 2` assertion | Constellation.Gate | Gate adopts an SDK pin ≥ `1d52369` and updates the assertion |
-| Odoo deleting its shadow transport | IB-Odoo_19 | Odoo adopts `execute()` |
-| EIE deleting `app/services/gate_registration.py` | EIE | EIE adopts `register_node()` |
-| `cryptography` advisories vs the pyOpenSSL ceiling | Gate_SDK + IB-Odoo_19 dependency owner (#39) | pyOpenSSL forward-pin lands in IB-Odoo_19, then Gate_SDK raises the ceiling |
-| Packaging harness building from a temp cwd | Gate_SDK | non-blocking hygiene |
-| Migrating legacy tests to the `transport=` seam | Gate_SDK | non-blocking hygiene |
-
-Deferred per the original scope, unchanged: durable Gate idempotency, Gate retry
-policy redesign, domain contract models, queue/outbox, generalized service
-discovery, `TransportSecurity` hash-envelope redesign, package registry
-infrastructure.
-
-Recorded in the session debt ledger: `gate-lineage-reentry-hopcount` (deferred,
-with owner and removal trigger).
+Explicitly not done, per scope: no arbitrary peer client for applications, no
+domain translation, no worker selection, no hidden retries, no worker failover,
+no health mutation, no concurrency or backpressure policy, no Odoo- or
+EIE-specific code, no dependency change, no schema change, and no edits to any
+peer repository.
 
 # Merge Recommendation
 
 **APPROVE.**
 
-The wire contract is unchanged, the full suite is green on two Python versions
-and at the declared cryptography lower bound, the built wheel behaves like the
-checkout, Gate's suite shows no regression attributable to this branch, and both
-consumer shadow-transport removals are proven against the installed package.
+Both sides of Gate are closed, the peer-escape guarantee is stronger than before
+(now structurally guarded), the wire contract is untouched, the full suite is
+green, the built wheel proves the capability, and Gate's own delta branch passes
+completely against this candidate.
 
-Two behavior changes a reviewer should look at deliberately: the network
-deadline now derives from the packet header, and outbound signing now precedes
-outbound validation. Both are argued above; both are strictly safer.
+A reviewer should look deliberately at two things: the authority check in
+`gate_authority/dispatch.py::_assert_gate_authored` — it is the entire safety
+argument for the surface existing — and the absence of a timeout parameter,
+which is a deliberate refusal of what Gate asked for.
 
 # Release-Set Recommendation
 
-Merge Gate_SDK first — it is additive to the wire and consumers can adopt at
-their own pace. Then, in any order:
-
-1. **Constellation.Gate** — bump the SDK pin past `1d52369` and fix the stale
-   hop-count assertion. Required before Gate benefits, and the only thing that
-   clears the deferred blocker.
-2. **EIE** — replace `app/services/gate_registration.py` with `register_node()`.
-   Smallest change, largest deletion.
-3. **Odoo** — adopt `execute()` in `plasticos_gate/services/gate_client.py` and
-   delete the packet construction, the timeout arithmetic, and
-   `classify_transport_failure()`.
-
-No consumer is forced to move: existing call sites keep working.
+1. **Merge Gate_SDK #40.** Additive to the wire; consumers adopt at their own pace.
+2. **Constellation.Gate** — pin to this SDK candidate, add `timeout_ms=` to the
+   `derive` call, replace `_post_dispatch_packet` with
+   `send_gate_authored_packet`, consume the typed errors, and wire its pooled
+   client through. Its delta branch already passes against this SDK.
+3. **EIE** — replace `app/services/gate_registration.py` with `register_node()`.
+4. **Odoo** — adopt `execute()` and delete its shadow transport.
 
 # Next Straight-Line Move
 
-Enrichment.Inference.Engine, per the stated plan: an ADR pack locking domain
-ownership and durable-before-completed semantics, with its contract consuming
-these Gate_SDK capabilities — `register_node()` for control-plane registration
-and the typed taxonomy for transport failures — rather than inventing another
-boundary.
+Pin Constellation.Gate to this exact SDK candidate, derive each worker child
+with the remaining downstream `timeout_ms`, delete `_post_dispatch_packet`, and
+execute the real Gate→EIE runtime proof.
 
 # Machine-Readable Summary
 
 ```yaml
 repository: Quantum-L9/Gate_SDK
+pr: 40
 branch: claude/gate-sdk-transport-closure-u2klcf
-candidate_head: "6225f75ae185dd6fff98a12c670898a536069392"
-pr:
-  created: true
-  number: 40
-  url: "https://github.com/Quantum-L9/Gate_SDK/pull/40"
-  head_sha: "6225f75ae185dd6fff98a12c670898a536069392"
-architecture:
-  transport_authority: Gate_SDK
-  domain_payload_opaque: true
-  gate_only_egress: true
-public_api:
+candidate_head: "08413cd17ff9b52bbf4fc3088a63a760372345c9"
+remote_pr_head: "PENDING_PUSH"
+application_transport:
   high_level_execute: true
-  low_level_send_to_gate_preserved: true
-  caller_manual_root_packet_required: false
+  caller_manual_packet_required: false
+  arbitrary_peer_routing: false
+gate_worker_transport:
+  present: true
+  api: "send_gate_authored_packet"
+  selects_worker: false
+  accepts_gate_resolved_worker: true
+  gate_authored_packet_required: true
+  fixed_execute_endpoint: true
+  caller_manual_http: false
+authority:
+  source_gate_required: true
+  destination_matches_target: true
+  reply_to_gate_required: true
+  resolved_by_gate_required: true
+  route_kind_external_ingress_required: true
 deadline:
-  one_application_budget: true
-  packet_timeout_sdk_owned: true
-  network_timeout_sdk_owned: true
+  separate_socket_budget_parameter: false
+  packet_header_drives_network_timeout: true
+  remaining_budget_worker_proof: PASS
+  one_downstream_deadline: true
 retry:
-  hidden_application_retries: false
-idempotency:
-  logical_identity_caller_owned: true
-  transport_representation_sdk_owned: true
+  hidden_application_retry: false
+  hidden_worker_dispatch_retry: false
+  worker_network_attempts: 1
+security:
+  outbound_gate_dispatch_signing: PASS
+  signed_artifact_validation: PASS
+  worker_response_integrity: PASS
+  worker_response_signature: PASS
+  application_peer_escape: BLOCKED
 errors:
-  typed_failure_closure: true
-registration:
-  sdk_owned: true
-  owner_metadata_supported: true
-  bespoke_http_required_by_eie: false
+  raw_httpx_required_by_gate: false
+  typed_worker_transport_failures: true
+connection:
+  reusable_transport_supported: true
+wire_contract:
+  schema_changed: false
+  transport_hash_changed: false
+  derive_semantics_changed: false
 compatibility:
-  odoo: PASS
-  constellation_gate: PASS
-  eie: PASS
   installed_package: PASS
+  constellation_gate: PASS
+  sdk_worker_runtime: PASS
+  signed_round_trip: PASS
 validation:
-  contracts: PASS
-  lint: PASS
-  mypy: PASS
   tests: PASS
+  lint: PASS
+  format: PASS
+  mypy: PASS
+  contracts: PASS
+  make_pr: PENDING
 blocking_defects: []
 non_blocking_defects:
-  - "leftover repo-root build/ shadows the build frontend in tests/packaging (local-only; make clean resolves)"
-  - "registration sends metadata.generated_by where EIE's hand-written payload omitted it (accepted by Gate, ignored by ownership resolution)"
-  - "legacy gate tests still monkeypatch httpx.AsyncClient globally instead of using the transport= seam"
+  - "leftover repo-root build/ shadows the build frontend in tests/packaging (local-only)"
+  - "registration sends metadata.generated_by where EIE's hand-written payload omitted it"
+  - "legacy gate tests monkeypatch httpx.AsyncClient globally instead of using the transport= seam"
+  - "SonarCloud S5332 on the internal_url http fallback, pre-existing on main, suppressed with justification"
 external_blockers:
+  - id: gate-sdk-dep-audit-cryptography
+    repository: Quantum-L9/Gate_SDK + cryptoxdog/IB-Odoo_19
+    caused_by_this_pr: false
+    fails_identically_on_main: true
+    cause: "7 advisories in cryptography 44.0.3; minimum fix 46.0.5 exceeds the <45 ceiling, which is exactly pyOpenSSL 24.3.0's declared range"
+    removal_trigger: "pyOpenSSL forward-pinned in IB-Odoo_19, then the Gate_SDK ceiling raised"
+closed_blockers:
+  - id: gate-worker-transport-missing
+    closed_by: "this delta"
   - id: gate-lineage-reentry-hopcount
-    repository: Quantum-L9/Constellation.Gate
-    test: tests/architecture/test_lineage_reentry.py::test_lineage_is_preserved_across_gate_reentry_and_dispatch
-    caused_by_this_branch: false
-    fails_identically_on_sdk_main: true
-    gate_runtime_affected: false
-    cause: "Gate pins Gate_SDK a770e853, predating SDK commit 1d52369 (derive hop reset); the assertion encodes pre-1d52369 behavior"
-    removal_trigger: "Gate adopts an SDK pin >= 1d52369 and updates the assertion"
+    closed_by: "Constellation.Gate branch claude/gate-routing-sdk-transport-4btf4g (4778fee)"
 verdict:
   local: GO
   transport_contract: GO
-  cross_repo: GO
+  gate_worker_closure: GO
   merge: APPROVE
-next_move: "Enrichment.Inference.Engine ADR pack: lock domain ownership and durable-before-completed semantics, consuming register_node() and the typed taxonomy."
+  release_set: GO
+next_move: >
+  Pin Constellation.Gate to this exact SDK candidate, derive each worker child
+  with the remaining downstream timeout_ms, replace its manual worker HTTP with
+  send_gate_authored_packet, then execute the real Gate→EIE runtime proof.
 ```
