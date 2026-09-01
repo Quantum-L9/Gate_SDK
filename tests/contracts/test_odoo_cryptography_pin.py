@@ -1,10 +1,8 @@
-"""Gate_SDK cryptography range must stay installable next to IB-Odoo_19.
+"""Gate_SDK cryptography floor stays installable next to IB-Odoo_19.
 
-Odoo.sh pins ``cryptography==43.0.3`` with ``pyOpenSSL==24.3.0``. That
-pyOpenSSL release supports cryptography 41.0.5–44.x. An unbounded
-``cryptography>=43`` lets pip pull 45+ and recreate the registry crash
-(#114). ``42.0.8`` is below the SDK floor and is not a compatible
-downgrade target.
+The Odoo.sh pyOpenSSL window is a *consumer* pin (IB-Odoo_19
+``cryptography==43.0.3``), not an SDK-wide ceiling. The SDK only needs
+the floor so ``43.0.3`` still resolves. ``42.0.8`` stays rejected.
 """
 
 from __future__ import annotations
@@ -22,8 +20,8 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 _ODOO_PIN = Version("43.0.3")
 # Historic / non-overlapping pin — must stay rejected.
 _LEGACY_ODOO_PIN = Version("42.0.8")
-# First major outside pyOpenSSL 24.3.0's declared window.
-_OUTSIDE_PYOPENSSL_WINDOW = Version("45.0.0")
+# Patched float consumers may take when they do not pin below 45.
+_PATCHED_CRYPTOGRAPHY = Version("50.0.1")
 
 
 def _cryptography_specifier() -> SpecifierSet:
@@ -46,10 +44,13 @@ def test_legacy_42_pin_is_outside_the_sdk_range() -> None:
     )
 
 
-def test_range_has_an_upper_bound_inside_pyopenssl_24_3() -> None:
+def test_odoo_pin_stays_installable_without_sdk_ceiling() -> None:
     spec = _cryptography_specifier()
     assert spec.contains(Version("44.0.0"))
-    assert not spec.contains(_OUTSIDE_PYOPENSSL_WINDOW), (
-        f"{spec} must reject {_OUTSIDE_PYOPENSSL_WINDOW} so pip cannot float "
-        "past pyOpenSSL 24.3.0's 41.0.5–44.x window"
+    assert spec.contains(_PATCHED_CRYPTOGRAPHY), (
+        f"{spec} must admit {_PATCHED_CRYPTOGRAPHY} so consumers without an "
+        "Odoo pin can float to a patched cryptography"
+    )
+    assert spec.contains(_ODOO_PIN), (
+        f"{spec} must still contain Odoo pin {_ODOO_PIN}"
     )
