@@ -637,3 +637,261 @@ emit({"body": body, "keys": sorted(body)})
         "supported_actions",
         "timeout_ms",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Gate-authority worker transport from the installed wheel
+# ---------------------------------------------------------------------------
+#
+# Constellation.Gate consumes this from a published artifact, not from a
+# checkout. A capability that only exists in src/ is one Gate cannot adopt.
+
+
+def test_installed_wheel_ships_the_gate_authority_namespace(
+    installed_sdk: InstalledSdk,
+) -> None:
+    """The privileged surface ships, and stays out of the application namespaces."""
+    result = installed_sdk.run(
+        """
+import constellation_node_sdk as sdk
+import constellation_node_sdk.gate as gate_package
+from constellation_node_sdk import gate_authority
+
+expected = [
+    "GateDispatchTransport",
+    "GateDispatchTransportConfig",
+    "GateDispatchError",
+    "GateDispatchAuthorityError",
+    "GateDispatchConfigurationError",
+    "GateDispatchSecurityError",
+    "WorkerConnectionError",
+    "WorkerHTTPError",
+    "WorkerResponseError",
+    "WorkerTimeoutError",
+]
+privileged = {"GateDispatchTransport", "GateDispatchTransportConfig"}
+emit({
+    "missing": [n for n in expected if not hasattr(gate_authority, n)],
+    "unexported": [n for n in expected if n not in gate_authority.__all__],
+    "leaked_to_root": sorted(privileged & set(sdk.__all__)),
+    "leaked_to_gate": sorted(privileged & set(gate_package.__all__)),
+    "has_send": hasattr(gate_authority.GateDispatchTransport, "send_gate_authored_packet"),
+})
+"""
+    )
+    assert result["missing"] == []
+    assert result["unexported"] == []
+    assert result["leaked_to_root"] == []
+    assert result["leaked_to_gate"] == []
+    assert result["has_send"] is True
+
+
+def test_installed_wheel_dispatches_to_a_real_worker(installed_sdk: InstalledSdk) -> None:
+    """
+    The full Gate→worker rail from the distribution, through the real runtime.
+
+    Proves the deadline closure survives packaging: the remaining budget Gate
+    derived reaches the packet header, the socket, and the worker's handler as
+    one number.
+    """
+    result = installed_sdk.run(
+        """
+import asyncio, inspect, json
+import httpx
+from constellation_node_sdk.gate_authority import (
+    GateDispatchTransport,
+    GateDispatchTransportConfig,
+)
+from constellation_node_sdk.runtime.execution import execute_transport_packet
+from constellation_node_sdk.runtime.handlers import register_handler, clear_handlers
+from constellation_node_sdk.transport.hop_trace import make_dispatch_hop, make_ingress_hop
+from constellation_node_sdk.transport.packet import TransportPacket, create_transport_packet
+from constellation_node_sdk.transport.provenance import RoutingProvenance
+
+WORKER = "enrichment-engine"
+
+
+class Recorder(httpx.AsyncBaseTransport):
+    def __init__(self, responder):
+        self.responder = responder
+        self.requests = []
+
+    async def handle_async_request(self, request):
+        request.read()
+        self.requests.append(request)
+        result = self.responder(request, len(self.requests))
+        return await result if inspect.isawaitable(result) else result
+
+
+async def worker(request, _attempt):
+    packet = TransportPacket.model_validate(json.loads(request.content.decode()))
+    response = await execute_transport_packet(packet, node_name=WORKER, dev_mode=True)
+    return httpx.Response(200, json=response.model_dump_json_dict())
+
+
+async def main():
+    clear_handlers()
+
+    @register_handler("converge")
+    async def handle(_org_id, payload):
+        return {"state": "completed", "run_id": payload["run_id"]}
+
+    root = create_transport_packet(
+        action="converge",
+        payload={"entity_id": "42", "run_id": "run-1"},
+        tenant="tenant-a",
+        source_node="odoo",
+        destination_node="gate",
+        reply_to="odoo",
+        timeout_ms=30000,
+        idempotency_key="odoo:enrichment:run-1",
+        provenance=RoutingProvenance(
+            origin_kind="node",
+            requested_action="converge",
+            resolved_by_gate=False,
+            original_source_node="odoo",
+        ),
+    )
+    observed = root.with_hop(
+        make_ingress_hop(packet=root, node="gate", action="converge", status="validated")
+    )
+    base = observed.derive(
+        packet_type=observed.header.packet_type,
+        action="converge",
+        source_node="gate",
+        destination_node=WORKER,
+        reply_to="gate",
+        payload=dict(observed.payload),
+        timeout_ms=2000,
+        provenance=RoutingProvenance(
+            origin_kind="gate",
+            requested_action="converge",
+            resolved_by_gate=True,
+            route_kind="external_ingress",
+            original_source_node="odoo",
+        ),
+    )
+    dispatch_packet = base.with_hop(
+        make_dispatch_hop(
+            packet=base, node="gate", action="converge",
+            target_node=WORKER, status="delegated",
+        )
+    )
+
+    budgets = []
+    import constellation_node_sdk.runtime.execution as execution
+
+    original_wait_for = execution.asyncio.wait_for
+
+    async def spy(awaitable, timeout=None):
+        budgets.append(timeout)
+        return await original_wait_for(awaitable, timeout)
+
+    recorder = Recorder(worker)
+    execution.asyncio.wait_for = spy
+    try:
+        transport = GateDispatchTransport(
+            GateDispatchTransportConfig(local_gate_node="gate"), transport=recorder
+        )
+        response = await transport.send_gate_authored_packet(
+            packet=dispatch_packet,
+            target_node=WORKER,
+            worker_base_url="http://enrichment-engine:8000",
+        )
+    finally:
+        execution.asyncio.wait_for = original_wait_for
+
+    sent = json.loads(recorder.requests[0].content.decode())
+    emit({
+        "state": response.payload["state"],
+        "url": str(recorder.requests[0].url),
+        "attempts": len(recorder.requests),
+        "packet_timeout_ms": sent["header"]["timeout_ms"],
+        "socket_read_timeout": recorder.requests[0].extensions["timeout"]["read"],
+        "handler_budgets": budgets,
+        "response_source": response.address.source_node,
+        "response_destination": response.address.destination_node,
+        "idempotency_preserved": response.header.idempotency_key
+        == dispatch_packet.header.idempotency_key,
+    })
+    clear_handlers()
+
+
+asyncio.run(main())
+"""
+    )
+    assert result["state"] == "completed"
+    assert result["url"] == "http://enrichment-engine:8000/v1/execute"
+    assert result["attempts"] == 1
+    # One downstream deadline, from the wheel.
+    assert result["packet_timeout_ms"] == 2000
+    assert result["socket_read_timeout"] == 2.0
+    assert result["handler_budgets"] == [2.0]
+    assert result["response_source"] == "enrichment-engine"
+    assert result["response_destination"] == "gate"
+    assert result["idempotency_preserved"] is True
+
+
+def test_installed_wheel_refuses_a_non_gate_authored_dispatch(
+    installed_sdk: InstalledSdk,
+) -> None:
+    """The peer-escape guard survives packaging: a worker URL alone is not enough."""
+    result = installed_sdk.run(
+        """
+import asyncio
+import httpx
+from constellation_node_sdk.gate_authority import (
+    GateDispatchAuthorityError,
+    GateDispatchTransport,
+    GateDispatchTransportConfig,
+)
+from constellation_node_sdk.transport.packet import create_transport_packet
+from constellation_node_sdk.transport.provenance import RoutingProvenance
+
+
+class Recorder(httpx.AsyncBaseTransport):
+    def __init__(self):
+        self.requests = []
+
+    async def handle_async_request(self, request):
+        request.read()
+        self.requests.append(request)
+        return httpx.Response(200, json={})
+
+
+async def main():
+    node_packet = create_transport_packet(
+        action="converge",
+        payload={"entity_id": "42"},
+        tenant="tenant-a",
+        source_node="odoo",
+        destination_node="enrichment-engine",
+        reply_to="odoo",
+        provenance=RoutingProvenance(
+            origin_kind="node",
+            requested_action="converge",
+            resolved_by_gate=False,
+            original_source_node="odoo",
+        ),
+    )
+    recorder = Recorder()
+    transport = GateDispatchTransport(
+        GateDispatchTransportConfig(local_gate_node="gate"), transport=recorder
+    )
+    refused = False
+    try:
+        await transport.send_gate_authored_packet(
+            packet=node_packet,
+            target_node="enrichment-engine",
+            worker_base_url="http://enrichment-engine:8000",
+        )
+    except GateDispatchAuthorityError:
+        refused = True
+    emit({"refused": refused, "requests": len(recorder.requests)})
+
+
+asyncio.run(main())
+"""
+    )
+    assert result["refused"] is True
+    assert result["requests"] == 0

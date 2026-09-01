@@ -99,6 +99,29 @@ substrings against a message to classify a transport failure. Note that httpx
 timeout exceptions frequently stringify to `""`, so messages must carry the
 exception type rather than relying on `str(exc)`.
 
+### 2.11 Gate-authority worker transport
+`constellation_node_sdk.gate_authority` is the only surface that addresses a
+worker, and it exists for Constellation.Gate alone.
+
+Its safety is mechanical, not documentary: authority is validated on the
+**packet**, so importing the module grants nothing. Never relax that check, and
+never re-export the surface from the package root or the `gate` package — an
+application that can reach it by accident can be made to route peer-to-peer.
+
+The SDK does not route. It may verify the target it is given; it must never
+resolve an action, query a registry, choose or load-balance workers, fail over,
+mark a node unhealthy, or apply backpressure. Those are Gate's.
+
+Do not add a general `send_to_url` / `send_to_peer` / `post_packet(url)` surface
+under any name. The authority check is what distinguishes this from a peer
+client; without it there is no difference.
+
+### 2.12 One transport implementation
+Both sides of Gate share one canonical-packet HTTP implementation
+(`_packet_http.py`), differing only in the error types they inject. Do not add a
+second copy: two implementations drift, and the one that drifts is whichever is
+exercised less.
+
 ### 2.10 Domain payloads stay opaque
 The SDK transports domain payloads. It never interprets, renames, supplements,
 or translates them, and no domain schema (`EnrichRequest`, Odoo fields, CRM
@@ -248,6 +271,13 @@ Add/update:
 - `tests/gate/test_consumer_architecture_guard.py` — consumer-facing drift guard
 - `tests/contracts/test_release_set_compatibility.py` — the full producer/Gate/worker rail
 - `tests/packaging/test_installed_package.py` — the same behavior from the built wheel
+
+#### Gate-authority transport changes
+Add/update:
+- `tests/gate_authority/test_dispatch_authority.py` — the peer-escape negatives
+- `tests/gate_authority/test_dispatch_transport_discipline.py` — one attempt, typed failures, signed rails, connection lifecycle
+- `tests/gate_authority/test_worker_dispatch_rail.py` — the real SDK worker round trip and the one-deadline proof
+- `tests/gate/test_consumer_architecture_guard.py` — the structural guards
 
 #### Runtime changes
 Add/update:
