@@ -6,7 +6,12 @@ PR:
   url: https://github.com/Quantum-L9/Gate_SDK/pull/40
   branch: claude/gate-sdk-transport-closure-u2klcf
   base: main
-  exact_remote_head_sha: bfe6642062a85a720ad8c25e96446d4df1c299ac
+  exact_remote_head_sha: e39d311e — docs-only, on top of the code head below
+  code_head_sha: bfe6642062a85a720ad8c25e96446d4df1c299ac
+  head_note: >
+    Every code claim in this brief was measured at bfe6642. The heads after it
+    carry this brief and the findings only; a docs commit cannot change a
+    transport verdict, and each one re-ran the full gate before pushing.
 
 MAKE PR:
   result: PASS — pushed d7f85d7..bfe6642, PR #40 already open, gate clean
@@ -115,6 +120,8 @@ TEST EVIDENCE:
     result: 180 passed, 1 failed (pre-existing stale assertion, fixed on the delta branch)
   - command: Gate consumability proof, installed SDK
     result: 10/10 proofs true
+  - command: gh check-runs on the published head
+    result: 17 success; gate-5-dep-audit red (and its aggregate), red on main too
 
 BLOCKERS:
   - none owned by this PR
