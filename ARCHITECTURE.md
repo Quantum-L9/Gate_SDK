@@ -7,8 +7,60 @@ The SDK exists to ensure every Constellation node speaks the same protocol and o
 The SDK is deliberately opinionated:
 
 - one canonical transport type: `TransportPacket`
-- one canonical node egress path: `GateClient.send_to_gate()`
+- one canonical node egress path: `GateClient` — `execute()` for applications, `send_to_gate()` for packet-native callers
 - one canonical node runtime: `create_node_app()`
+
+The two client surfaces are one egress path, not two. `execute()` is a closure
+over the packet-native primitive: it builds the canonical root packet from
+business inputs and hands it to `send_to_gate()`. There is no second transport
+implementation, and no way for an application to reach a peer node through
+either.
+
+```text
+application            action, payload, tenant, operation id, one deadline
+      │
+      ▼
+GateClient.execute()   root packet · Gate destination · deadline · idempotency
+      │
+      ▼
+GateClient.send_to_gate()   validate · sign · HTTP · decode · validate · typed errors
+      │
+      ▼
+Gate
+```
+
+### The Gate-authority surface
+
+One SDK serves both sides of Gate. After Gate makes the routing decision, the
+mechanics of reaching the resolved worker are SDK-owned too:
+
+```text
+Gate                   resolve target · remaining budget · derive · dispatch hop
+      │
+      ▼
+GateDispatchTransport.send_gate_authored_packet()
+      │                authority check · sign · validate · /v1/execute · one POST
+      │                decode · integrity · "does this answer my dispatch?"
+      ▼
+resolved worker
+```
+
+This is the only surface in the SDK that addresses a worker, and it lives in its
+own `gate_authority` namespace, exported from neither the package root nor the
+node-facing `gate` package. It is not a peer client: authority is checked on the
+**packet**, not the caller, so importing it grants nothing. A dispatch is refused
+before any network call unless the packet is sourced from Gate, replied to Gate,
+addressed to the named target, `resolved_by_gate`, and `route_kind =
+external_ingress` — which an application cannot produce.
+
+The check reuses `validate_execute_ingress_packet`, the worker's own ingress
+law, so Gate cannot send what its worker would reject.
+
+Authority stays split: **Gate decides where, Gate_SDK decides how, the worker
+decides what.** The SDK never resolves an action, queries a registry, chooses or
+load-balances workers, fails over, marks a node unhealthy, or reads a payload.
+
+See [`docs/gate-authority-transport.md`](docs/gate-authority-transport.md).
 
 ## System model
 

@@ -5,6 +5,13 @@ import os
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+def _env_optional_int(name: str) -> int | None:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
+    return int(raw)
+
+
 def _env_bool(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -17,7 +24,17 @@ class GateClientConfig(BaseModel):
 
     gate_url: str
     local_node: str
+    # Default operation budget for GateClient.execute() when the caller does not
+    # supply one. It is not a second deadline: the budget is written into the
+    # packet header, and the actual network deadline is derived from that header.
     timeout_seconds: float = Field(default=30.0, gt=0.0)
+    # Optional hard ceiling on any operation budget, for deployments whose
+    # synchronous caller cannot outlive a fixed window. None means no ceiling.
+    max_timeout_ms: int | None = Field(default=None, ge=1)
+    # Explicit slice of the operation budget reserved for the SDK to raise a
+    # typed timeout before the caller's own deadline elapses. Default 0: the
+    # network deadline equals the advertised budget, with no hidden reservation.
+    transport_margin_ms: int = Field(default=0, ge=0)
     require_signature: bool = False
     signing_key: str | bytes | None = None
     signing_key_id: str | None = None
@@ -135,6 +152,8 @@ def get_gate_client_config_from_env() -> GateClientConfig:
         verifying_keys={},
         verify_hop_signatures=_env_bool("L9_VERIFY_HOP_SIGNATURES", False),
         allowed_gate_destination=os.getenv("GATE_ALLOWED_DESTINATION", "gate"),
+        max_timeout_ms=_env_optional_int("GATE_CLIENT_MAX_TIMEOUT_MS"),
+        transport_margin_ms=int(os.getenv("GATE_CLIENT_TRANSPORT_MARGIN_MS", "0")),
     )
 
 

@@ -35,6 +35,38 @@ For development:
 
 pip install -e ".[dev]"
 Quick start
+Application — calling Gate
+from constellation_node_sdk import GateClient, GateClientConfig
+
+client = GateClient(
+    GateClientConfig(
+        gate_url="https://gate.internal:8000",
+        local_node="erp",
+        timeout_seconds=30.0,
+    )
+)
+
+response = await client.execute(
+    action="converge",
+    payload={"entity": {"id": "org-4711"}},
+    tenant="tenant-a",
+    idempotency_key="erp:enrichment:run-4711",
+    timeout_ms=25_000,
+)
+That is the whole outbound integration. The application supplies business
+inputs; the SDK owns packet construction, the Gate destination, the deadline,
+transport idempotency, signing, HTTP, response validation, and typed failures.
+An application never builds a TransportPacket. See docs/gate-client.md and
+examples/application_client/.
+
+Gate → worker (Constellation.Gate only)
+After Gate resolves a worker, the transport to it is SDK-owned as well, through
+constellation_node_sdk.gate_authority. That surface is deliberately absent from
+the package root and from the gate package: it is not part of an application
+integration, and it accepts only packets carrying Gate's own routing authority,
+so it cannot be used as a node-to-peer client. See
+docs/gate-authority-transport.md.
+
 Worker node
 from constellation_node_sdk import create_node_app, register_handler
 

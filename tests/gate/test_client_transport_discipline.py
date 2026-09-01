@@ -13,10 +13,14 @@ from contextlib import contextmanager
 
 import httpx
 import pytest
-from pydantic import ValidationError
 
 from constellation_node_sdk.gate.client import GateClient
 from constellation_node_sdk.gate.config import GateClientConfig
+from constellation_node_sdk.gate.errors import (
+    GateConnectionError,
+    GateHTTPError,
+    GateResponseError,
+)
 from constellation_node_sdk.transport.packet import TransportPacket, create_transport_packet
 from constellation_node_sdk.transport.provenance import RoutingProvenance
 from constellation_node_sdk.transport.tenant import TenantContext
@@ -147,7 +151,7 @@ async def test_gate_client_does_not_retry_a_transport_failure(
 
     with patched_transport(transport):
         client = GateClient(_gate_config())
-        with pytest.raises(httpx.ConnectError):
+        with pytest.raises(GateConnectionError):
             await client.send_to_gate(packet)
 
     assert len(transport.requests) == 1
@@ -165,7 +169,7 @@ async def test_gate_client_does_not_retry_a_server_error(
 
     with patched_transport(transport):
         client = GateClient(_gate_config())
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(GateHTTPError):
             await client.send_to_gate(packet)
 
     assert len(transport.requests) == 1
@@ -189,7 +193,7 @@ async def test_gate_client_rejects_a_non_canonical_response_body(
 
     with patched_transport(transport):
         client = GateClient(_gate_config())
-        with pytest.raises(ValidationError):
+        with pytest.raises(GateResponseError):
             await client.send_to_gate(packet)
 
     assert len(transport.requests) == 1

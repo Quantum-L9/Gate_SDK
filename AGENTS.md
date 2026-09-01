@@ -55,7 +55,78 @@ Forbidden:
 - APIs that accept arbitrary worker endpoints
 
 Allowed:
-- `GateClient.send_to_gate(packet)`
+- `GateClient.execute(...)` — the application surface
+- `GateClient.send_to_gate(packet)` — the packet-native primitive
+
+### 2.6 One application surface
+A normal application-to-Gate operation must be expressible through one
+`GateClient.execute()` call, using business inputs only.
+
+`create_transport_packet()`, `TransportPacket.derive()`, `with_hop()`, and
+`send_to_gate()` remain supported protocol primitives for Gate, the SDK
+runtime, orchestrators, and protocol tests. They are **not** the recommended
+application integration, and examples must not teach them as one.
+
+If an application needs substantial code for packet construction, deadline
+synchronization, transport idempotency, Gate HTTP, response validation,
+signing, failure classification, or registration HTTP, the default diagnosis is
+a Gate_SDK capability gap — not an application-specific requirement.
+
+### 2.7 One deadline
+The caller supplies one operation budget. The SDK writes it into
+`packet.header.timeout_ms` and derives the real network deadline from it.
+
+The network deadline must never silently exceed the budget the packet
+advertises downstream. `config.timeout_seconds` is the *default* budget, not a
+second deadline. Do not add a second deadline abstraction.
+
+### 2.8 No hidden execution retry
+`execute()` and `send_to_gate()` perform exactly one HTTP request. A failed
+execution is returned as a typed failure, never replayed: retrying belongs to
+the layer with semantic authority and a stable idempotency key.
+
+Gate registration is the one exemption — control-plane reconciliation with
+bounded, visible backoff. Do not extend it to execution.
+
+### 2.9 Typed failure closure
+Every failure leaving the Gate client is a `GateClientError` subclass, with the
+underlying exception chained and structured context (status code, applied
+deadline, direction) preserved.
+
+Do not let `httpx` exceptions, pydantic `ValidationError`, or bare `ValueError`
+escape the client. A consumer must never have to import `httpx` or match
+substrings against a message to classify a transport failure. Note that httpx
+timeout exceptions frequently stringify to `""`, so messages must carry the
+exception type rather than relying on `str(exc)`.
+
+### 2.11 Gate-authority worker transport
+`constellation_node_sdk.gate_authority` is the only surface that addresses a
+worker, and it exists for Constellation.Gate alone.
+
+Its safety is mechanical, not documentary: authority is validated on the
+**packet**, so importing the module grants nothing. Never relax that check, and
+never re-export the surface from the package root or the `gate` package — an
+application that can reach it by accident can be made to route peer-to-peer.
+
+The SDK does not route. It may verify the target it is given; it must never
+resolve an action, query a registry, choose or load-balance workers, fail over,
+mark a node unhealthy, or apply backpressure. Those are Gate's.
+
+Do not add a general `send_to_url` / `send_to_peer` / `post_packet(url)` surface
+under any name. The authority check is what distinguishes this from a peer
+client; without it there is no difference.
+
+### 2.12 One transport implementation
+Both sides of Gate share one canonical-packet HTTP implementation
+(`_packet_http.py`), differing only in the error types they inject. Do not add a
+second copy: two implementations drift, and the one that drifts is whichever is
+exercised less.
+
+### 2.10 Domain payloads stay opaque
+The SDK transports domain payloads. It never interprets, renames, supplements,
+or translates them, and no domain schema (`EnrichRequest`, Odoo fields, CRM
+identities, provider payloads) belongs in SDK production code. Test fixtures
+may be copied from consumers; they stay opaque dictionaries.
 
 ### 2.3 Gate is the routing authority
 Nodes express intent by `action`.
@@ -194,6 +265,19 @@ Add/update:
 - Gate policy tests
 - Gate client tests
 - registration tests if affected
+- `tests/gate/test_application_execute.py` — the application surface
+- `tests/gate/test_deadline_closure.py` — asserts the timeout httpx *actually* applied
+- `tests/gate/test_error_taxonomy.py` — every failure category, reachable and distinct
+- `tests/gate/test_consumer_architecture_guard.py` — consumer-facing drift guard
+- `tests/contracts/test_release_set_compatibility.py` — the full producer/Gate/worker rail
+- `tests/packaging/test_installed_package.py` — the same behavior from the built wheel
+
+#### Gate-authority transport changes
+Add/update:
+- `tests/gate_authority/test_dispatch_authority.py` — the peer-escape negatives
+- `tests/gate_authority/test_dispatch_transport_discipline.py` — one attempt, typed failures, signed rails, connection lifecycle
+- `tests/gate_authority/test_worker_dispatch_rail.py` — the real SDK worker round trip and the one-deadline proof
+- `tests/gate/test_consumer_architecture_guard.py` — the structural guards
 
 #### Runtime changes
 Add/update:

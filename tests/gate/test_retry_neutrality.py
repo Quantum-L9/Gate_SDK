@@ -29,6 +29,11 @@ import pytest
 
 from constellation_node_sdk.gate.client import GateClient
 from constellation_node_sdk.gate.config import GateClientConfig, GateRegistrationConfig
+from constellation_node_sdk.gate.errors import (
+    GateConnectionError,
+    GateHTTPError,
+    GateTimeoutError,
+)
 from constellation_node_sdk.runtime.execution import execute_transport_packet
 from constellation_node_sdk.runtime.handlers import clear_handlers, register_handler
 from constellation_node_sdk.transport.codec import encode_transport_packet
@@ -122,7 +127,7 @@ async def test_gate_client_does_not_retry_a_retryable_looking_status(
     client = _client()
     request = _request(tenant)
     with route_gate_http(lambda _r, _a: httpx.Response(status_code)) as transport:
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(GateHTTPError):
             await client.send_to_gate(request)
 
     assert len(transport.requests) == 1
@@ -140,7 +145,7 @@ async def test_gate_client_does_not_retry_a_dead_socket(
     client = _client()
     request = _request(tenant)
     with route_gate_http(explode) as transport:
-        with pytest.raises(httpx.ConnectError):
+        with pytest.raises(GateConnectionError):
             await client.send_to_gate(request)
 
     assert len(transport.requests) == 1
@@ -158,7 +163,7 @@ async def test_gate_client_does_not_retry_a_read_timeout(
     client = _client()
     request = _request(tenant)
     with route_gate_http(stall) as transport:
-        with pytest.raises(httpx.ReadTimeout):
+        with pytest.raises(GateTimeoutError):
             await client.send_to_gate(request)
 
     assert len(transport.requests) == 1
