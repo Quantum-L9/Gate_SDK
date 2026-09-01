@@ -51,6 +51,4 @@ def test_odoo_pin_stays_installable_without_sdk_ceiling() -> None:
         f"{spec} must admit {_PATCHED_CRYPTOGRAPHY} so consumers without an "
         "Odoo pin can float to a patched cryptography"
     )
-    assert spec.contains(_ODOO_PIN), (
-        f"{spec} must still contain Odoo pin {_ODOO_PIN}"
-    )
+    assert spec.contains(_ODOO_PIN), f"{spec} must still contain Odoo pin {_ODOO_PIN}"
