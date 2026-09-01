@@ -255,8 +255,6 @@ def worker_runtime_responder(node_name: str = "enrichment-engine") -> Any:
     policy, handler dispatch, and canonical response derivation are all genuine.
     A fixture that agreed only with the client under test would prove nothing.
     """
-    import json
-
     from constellation_node_sdk.runtime.execution import execute_transport_packet
 
     async def respond(request: httpx.Request, _attempt: int) -> httpx.Response:

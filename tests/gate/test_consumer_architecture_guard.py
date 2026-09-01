@@ -184,7 +184,7 @@ def test_no_generic_peer_surface_exists_anywhere_public() -> None:
     """
     import constellation_node_sdk as sdk
     import constellation_node_sdk.gate as gate_package
-    import constellation_node_sdk.gate_authority as gate_authority
+    from constellation_node_sdk import gate_authority
 
     for module in (sdk, gate_package, gate_authority):
         exported = set(getattr(module, "__all__", []))
@@ -206,8 +206,6 @@ def test_the_dispatch_surface_is_absent_from_application_namespaces() -> None:
 
 def test_gate_client_takes_no_routing_parameter_on_any_public_method() -> None:
     """Re-asserted after the dispatch surface landed: the application client is unchanged."""
-    from constellation_node_sdk.gate.client import GateClient
-
     for name in dir(GateClient):
         if name.startswith("_"):
             continue
