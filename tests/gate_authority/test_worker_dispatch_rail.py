@@ -22,6 +22,7 @@ from gate_client_helpers import (
 )
 
 from constellation_node_sdk.gate_authority import GateDispatchTransport
+from constellation_node_sdk.runtime import execution
 from constellation_node_sdk.runtime.handlers import clear_handlers, register_handler
 from constellation_node_sdk.security.validation import validate_transport_packet
 from constellation_node_sdk.transport.packet import TransportPacket, create_transport_packet
@@ -194,8 +195,6 @@ async def test_remaining_budget_drives_socket_and_worker_alike(converge_worker: 
 
     recording = RecordingTransport(worker_runtime_responder(WORKER))
     transport = GateDispatchTransport(make_dispatch_config(), transport=recording)
-
-    import constellation_node_sdk.runtime.execution as execution
 
     original = execution.asyncio.wait_for
     execution.asyncio.wait_for = recording_wait_for  # type: ignore[assignment]

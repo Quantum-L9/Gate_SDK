@@ -17,7 +17,16 @@ from pathlib import Path
 
 import pytest
 
-from constellation_node_sdk.gate.client import GateClient
+# Module-style imports throughout: this file introspects namespaces (`__all__`,
+# `hasattr`, module source), so it wants the module objects themselves, and a
+# single import style for the package is the point of several of these tests.
+import constellation_node_sdk as sdk
+import constellation_node_sdk.gate as gate_package
+import constellation_node_sdk.gate.client as gate_client
+import constellation_node_sdk.gate_authority as gate_authority
+import constellation_node_sdk.gate_authority.dispatch as gate_authority_dispatch
+
+GateClient = gate_client.GateClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = REPO_ROOT / "examples"
@@ -46,7 +55,6 @@ def _application_example_files() -> list[Path]:
 
 def test_execute_is_reachable_from_the_package_root() -> None:
     """A consumer finds the application surface without spelunking submodules."""
-    import constellation_node_sdk as sdk
 
     assert "GateClient" in sdk.__all__
     assert callable(sdk.GateClient.execute)
@@ -182,9 +190,6 @@ def test_no_generic_peer_surface_exists_anywhere_public() -> None:
     That shape is the whole risk: it would let any node reach any node, which is
     what Gate-only egress exists to prevent.
     """
-    import constellation_node_sdk as sdk
-    import constellation_node_sdk.gate as gate_package
-    from constellation_node_sdk import gate_authority
 
     for module in (sdk, gate_package, gate_authority):
         exported = set(getattr(module, "__all__", []))
@@ -194,10 +199,13 @@ def test_no_generic_peer_surface_exists_anywhere_public() -> None:
 
 def test_the_dispatch_surface_is_absent_from_application_namespaces() -> None:
     """An application never encounters the Gate-only surface by importing normally."""
-    import constellation_node_sdk as sdk
-    import constellation_node_sdk.gate as gate_package
-
     privileged = {"GateDispatchTransport", "GateDispatchTransportConfig"}
+
+    # Guard the guard: these names must really exist somewhere, or the assertions
+    # below would pass against a typo and prove nothing.
+    for name in privileged:
+        assert hasattr(gate_authority, name), f"{name} is not a real export to guard"
+
     for module in (sdk, gate_package):
         assert not (privileged & set(getattr(module, "__all__", [])))
         for name in privileged:
@@ -223,16 +231,17 @@ def test_the_dispatch_surface_requires_a_gate_authored_packet() -> None:
     A guard that only read the docstring would pass a version that had lost the
     check, so this asserts the validator exists and is wired into the send path.
     """
-    import inspect as _inspect
 
-    from constellation_node_sdk.gate_authority.dispatch import GateDispatchTransport
-
-    assert hasattr(GateDispatchTransport, "_assert_gate_authored")
-    send_source = _inspect.getsource(GateDispatchTransport.send_gate_authored_packet)
+    assert hasattr(gate_authority_dispatch.GateDispatchTransport, "_assert_gate_authored")
+    send_source = inspect.getsource(
+        gate_authority_dispatch.GateDispatchTransport.send_gate_authored_packet
+    )
     assert "_assert_gate_authored" in send_source
 
     # It reuses the worker's own ingress law rather than restating it.
-    authority_source = _inspect.getsource(GateDispatchTransport._assert_gate_authored)
+    authority_source = inspect.getsource(
+        gate_authority_dispatch.GateDispatchTransport._assert_gate_authored
+    )
     assert "validate_execute_ingress_packet" in authority_source
 
 
@@ -277,13 +286,12 @@ def test_the_dispatch_surface_does_not_route() -> None:
 
 def test_the_dispatch_surface_owns_the_execution_endpoint() -> None:
     """The worker execution path is fixed by the SDK, never supplied by the caller."""
-    from constellation_node_sdk.gate_authority.dispatch import (
-        _WORKER_EXECUTE_PATH,
-        GateDispatchTransport,
+    assert gate_authority_dispatch._WORKER_EXECUTE_PATH == "/v1/execute"
+    parameters = set(
+        inspect.signature(
+            gate_authority_dispatch.GateDispatchTransport.send_gate_authored_packet
+        ).parameters
     )
-
-    assert _WORKER_EXECUTE_PATH == "/v1/execute"
-    parameters = set(inspect.signature(GateDispatchTransport.send_gate_authored_packet).parameters)
     assert "worker_base_url" in parameters
     # A full endpoint parameter would make the path a registry value.
     assert not (parameters & {"url", "endpoint", "worker_url", "execute_url"})
@@ -291,13 +299,15 @@ def test_the_dispatch_surface_owns_the_execution_endpoint() -> None:
 
 def test_the_dispatch_surface_has_no_retry_or_timeout_knob() -> None:
     """One attempt, and one deadline that comes from the packet."""
-    from constellation_node_sdk.gate_authority import GateDispatchTransportConfig
-    from constellation_node_sdk.gate_authority.dispatch import GateDispatchTransport
 
-    fields = set(GateDispatchTransportConfig.model_fields)
+    fields = set(gate_authority.GateDispatchTransportConfig.model_fields)
     assert not {f for f in fields if "retr" in f.lower() or "timeout" in f.lower()}
 
-    parameters = set(inspect.signature(GateDispatchTransport.send_gate_authored_packet).parameters)
+    parameters = set(
+        inspect.signature(
+            gate_authority_dispatch.GateDispatchTransport.send_gate_authored_packet
+        ).parameters
+    )
     assert not (parameters & {"timeout", "timeout_ms", "timeout_seconds", "retries", "deadline"})
 
 

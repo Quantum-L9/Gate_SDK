@@ -22,11 +22,13 @@ from gate_client_helpers import (
 )
 
 from constellation_node_sdk.gate.client import GateClient
+from constellation_node_sdk.gate.errors import GatePolicyError
 from constellation_node_sdk.gate_authority import (
     GateDispatchAuthorityError,
     GateDispatchConfigurationError,
     GateDispatchTransport,
 )
+from constellation_node_sdk.runtime.handlers import clear_handlers, register_handler
 from constellation_node_sdk.transport.packet import TransportPacket, create_transport_packet
 from constellation_node_sdk.transport.provenance import RoutingProvenance
 
@@ -253,8 +255,6 @@ async def test_the_caller_supplies_a_base_url_not_an_endpoint(bad_url: str) -> N
 @pytest.fixture()
 def converge_worker() -> Any:
     """These cases reach the real worker runtime, which needs a handler."""
-    from constellation_node_sdk.runtime.handlers import clear_handlers, register_handler
-
     clear_handlers()
 
     @register_handler("converge")
@@ -294,8 +294,6 @@ async def test_gate_client_still_cannot_reach_a_worker() -> None:
     An application still reaches Gate and only Gate: its client takes no
     destination, and its packet-native primitive refuses a peer target.
     """
-    from constellation_node_sdk.gate.errors import GatePolicyError
-
     transport = RecordingTransport(gate_echo_responder({"state": "completed"}))
     client = GateClient(make_client_config(local_node="odoo"), transport=transport)
 
@@ -319,26 +317,6 @@ async def test_gate_client_still_cannot_reach_a_worker() -> None:
     with pytest.raises(GatePolicyError):
         await client.send_to_gate(peer_targeted)
     assert transport.requests == []
-
-
-def test_the_dispatch_surface_is_not_exported_to_applications() -> None:
-    """
-    The privileged surface is not reachable from the application namespaces.
-
-    An application importing ``constellation_node_sdk`` or its ``gate`` package
-    never encounters it, so it cannot be adopted by accident.
-    """
-    import constellation_node_sdk as sdk
-    import constellation_node_sdk.gate as gate_package
-
-    privileged = {
-        "GateDispatchTransport",
-        "GateDispatchTransportConfig",
-        "send_gate_authored_packet",
-    }
-    assert not (privileged & set(sdk.__all__))
-    assert not (privileged & set(gate_package.__all__))
-    assert not any(hasattr(sdk, name) for name in privileged)
 
 
 @pytest.mark.asyncio
