@@ -6,6 +6,13 @@ from typing import Any
 import httpx
 from pydantic import ValidationError
 
+from constellation_node_sdk._packet_http import (
+    PacketTransportErrors,
+    decode_packet_body,
+    describe_exception,
+    post_packet_json,
+    raise_for_status,
+)
 from constellation_node_sdk.security.signing import sign_transport_packet
 from constellation_node_sdk.security.validation import validate_transport_packet
 from constellation_node_sdk.transport.errors import TransportError
@@ -23,6 +30,15 @@ from .errors import (
     GateTimeoutError,
 )
 from .policy import validate_outbound_gate_packet
+
+# The application->Gate half of the shared canonical-packet HTTP machinery.
+# The Gate->worker half injects its own worker-named types into the same code.
+_GATE_TRANSPORT_ERRORS = PacketTransportErrors(
+    timeout=GateTimeoutError,
+    connection=GateConnectionError,
+    http=GateHTTPError,
+    response=GateResponseError,
+)
 
 
 class GateClient:
@@ -356,59 +372,24 @@ class GateClient:
         typed transport failure; replaying an application execution requires
         semantic authority the SDK does not have.
         """
-        request_headers = {"Content-Type": "application/json"}
-        if headers:
-            request_headers.update(headers)
-        try:
-            async with httpx.AsyncClient(
-                timeout=timeout_seconds,
-                transport=self._transport,
-            ) as client:
-                return await client.post(
-                    url,
-                    json=json_body,
-                    headers=request_headers,
-                    params=params,
-                )
-        except httpx.TimeoutException as exc:
-            # httpx timeout exceptions frequently stringify to "", so the
-            # exception type carries the only usable detail. Never rely on
-            # str(exc) alone here.
-            raise GateTimeoutError(
-                f"Gate did not respond within {timeout_seconds}s "
-                f"({type(exc).__name__}: {exc or 'no detail'})",
-                timeout_seconds=timeout_seconds,
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise GateConnectionError(
-                f"could not reach Gate at {url} ({type(exc).__name__}: {exc or 'no detail'})"
-            ) from exc
+        return await post_packet_json(
+            url=url,
+            json_body=json_body,
+            timeout_seconds=timeout_seconds,
+            errors=_GATE_TRANSPORT_ERRORS,
+            what="Gate",
+            transport=self._transport,
+            headers=headers,
+            params=params,
+        )
 
     @staticmethod
     def _decode_packet_body(response: httpx.Response, *, context: str) -> dict[str, Any]:
-        try:
-            body = response.json()
-        except ValueError as exc:
-            raise GateResponseError(
-                f"{context} was not decodable JSON ({type(exc).__name__}: {exc})",
-                body=response.text,
-            ) from exc
-        if not isinstance(body, dict):
-            raise GateResponseError(
-                f"{context} must be a JSON object, got {type(body).__name__}",
-                body=body,
-            )
-        return body
+        return decode_packet_body(response, context=context, errors=_GATE_TRANSPORT_ERRORS)
 
     @staticmethod
     def _raise_for_status(response: httpx.Response, *, context: str) -> None:
-        if response.is_success:
-            return
-        raise GateHTTPError(
-            f"{context} returned HTTP {response.status_code}",
-            status_code=response.status_code,
-            response_text=response.text,
-        )
+        raise_for_status(response, context=context, errors=_GATE_TRANSPORT_ERRORS)
 
     async def send_to_gate(self, packet: TransportPacket) -> TransportPacket:
         """
@@ -476,12 +457,12 @@ class GateClient:
         except httpx.TimeoutException as exc:
             raise GateTimeoutError(
                 f"Gate health did not respond within {timeout_seconds}s "
-                f"({type(exc).__name__}: {exc or 'no detail'})",
+                f"({describe_exception(exc)})",
                 timeout_seconds=timeout_seconds,
             ) from exc
         except httpx.HTTPError as exc:
             raise GateConnectionError(
-                f"could not reach Gate health at {url} ({type(exc).__name__}: {exc or 'no detail'})"
+                f"could not reach Gate health at {url} ({describe_exception(exc)})"
             ) from exc
 
         self._raise_for_status(response, context="Gate health")

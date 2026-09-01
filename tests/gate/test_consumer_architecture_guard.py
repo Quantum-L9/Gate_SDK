@@ -21,6 +21,7 @@ from constellation_node_sdk.gate.client import GateClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = REPO_ROOT / "examples"
+SRC_ROOT = REPO_ROOT / "src" / "constellation_node_sdk"
 
 # The mechanics a closed abstraction means an application never performs itself.
 CONSUMER_FORBIDDEN_CALLS = {
@@ -137,3 +138,193 @@ def test_at_least_one_application_example_exists() -> None:
     A closed abstraction has to be demonstrated somewhere a consumer will look.
     """
     assert _application_example_files(), "no application client example to guard"
+
+
+# ---------------------------------------------------------------------------
+# Gate-authority dispatch: the privileged surface must stay privileged
+# ---------------------------------------------------------------------------
+#
+# Adding a Gate→worker transport is where an SDK grows a general peer client by
+# accident. These guard the boundary structurally, so the regression is caught
+# by the suite rather than by a reviewer noticing a new parameter.
+
+GENERIC_PEER_SURFACE_NAMES = {
+    "send_to_url",
+    "send_to_peer",
+    "post_packet",
+    "execute_peer",
+    "send_to_node",
+    "dispatch_to_url",
+}
+
+PEER_ROUTING_PARAMETERS = {
+    "peer_url",
+    "destination_url",
+    "worker_url",
+    "url",
+    "endpoint",
+    "destination_node",
+}
+
+
+def _public_callables(module: object) -> dict[str, object]:
+    return {
+        name: getattr(module, name)
+        for name in getattr(module, "__all__", [])
+        if callable(getattr(module, name, None))
+    }
+
+
+def test_no_generic_peer_surface_exists_anywhere_public() -> None:
+    """
+    No public API may offer "post this packet to this URL".
+
+    That shape is the whole risk: it would let any node reach any node, which is
+    what Gate-only egress exists to prevent.
+    """
+    import constellation_node_sdk as sdk
+    import constellation_node_sdk.gate as gate_package
+    import constellation_node_sdk.gate_authority as gate_authority
+
+    for module in (sdk, gate_package, gate_authority):
+        exported = set(getattr(module, "__all__", []))
+        offending = exported & GENERIC_PEER_SURFACE_NAMES
+        assert not offending, f"{module.__name__} exports {sorted(offending)}"
+
+
+def test_the_dispatch_surface_is_absent_from_application_namespaces() -> None:
+    """An application never encounters the Gate-only surface by importing normally."""
+    import constellation_node_sdk as sdk
+    import constellation_node_sdk.gate as gate_package
+
+    privileged = {"GateDispatchTransport", "GateDispatchTransportConfig"}
+    for module in (sdk, gate_package):
+        assert not (privileged & set(getattr(module, "__all__", [])))
+        for name in privileged:
+            assert not hasattr(module, name), f"{module.__name__} leaks {name}"
+
+
+def test_gate_client_takes_no_routing_parameter_on_any_public_method() -> None:
+    """Re-asserted after the dispatch surface landed: the application client is unchanged."""
+    from constellation_node_sdk.gate.client import GateClient
+
+    for name in dir(GateClient):
+        if name.startswith("_"):
+            continue
+        member = getattr(GateClient, name)
+        if not callable(member):
+            continue
+        parameters = set(inspect.signature(member).parameters)
+        assert not (parameters & PEER_ROUTING_PARAMETERS), name
+
+
+def test_the_dispatch_surface_requires_a_gate_authored_packet() -> None:
+    """
+    The authority check is mechanical and reachable, not documentary.
+
+    A guard that only read the docstring would pass a version that had lost the
+    check, so this asserts the validator exists and is wired into the send path.
+    """
+    import inspect as _inspect
+
+    from constellation_node_sdk.gate_authority.dispatch import GateDispatchTransport
+
+    assert hasattr(GateDispatchTransport, "_assert_gate_authored")
+    send_source = _inspect.getsource(GateDispatchTransport.send_gate_authored_packet)
+    assert "_assert_gate_authored" in send_source
+
+    # It reuses the worker's own ingress law rather than restating it.
+    authority_source = _inspect.getsource(GateDispatchTransport._assert_gate_authored)
+    assert "validate_execute_ingress_packet" in authority_source
+
+
+def test_the_dispatch_surface_does_not_route() -> None:
+    """
+    Gate selects the worker. The SDK must not learn how.
+
+    Checked against executable code rather than raw text: this module's prose
+    legitimately discusses Gate's registry in order to say the SDK does not own
+    it, and a substring scan would flag that explanation as the violation.
+    """
+    tree = ast.parse((SRC_ROOT / "gate_authority" / "dispatch.py").read_text(encoding="utf-8"))
+
+    identifiers: set[str] = set()
+    imported_from: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            identifiers.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            identifiers.add(node.attr)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_from.add(node.module)
+        elif isinstance(node, ast.Import):
+            imported_from.update(alias.name for alias in node.names)
+
+    routing_constructs = {
+        "NodeRegistry",
+        "RouteResolver",
+        "resolve",
+        "registry",
+        "select_worker",
+        "choose_node",
+    }
+    offending = identifiers & routing_constructs
+    assert not offending, f"dispatch.py performs routing via {sorted(offending)}"
+
+    # Nor may it reach into Gate for that knowledge.
+    assert not any(module.startswith("constellation_gate") for module in imported_from), (
+        "the SDK must not import Constellation.Gate"
+    )
+
+
+def test_the_dispatch_surface_owns_the_execution_endpoint() -> None:
+    """The worker execution path is fixed by the SDK, never supplied by the caller."""
+    from constellation_node_sdk.gate_authority.dispatch import (
+        _WORKER_EXECUTE_PATH,
+        GateDispatchTransport,
+    )
+
+    assert _WORKER_EXECUTE_PATH == "/v1/execute"
+    parameters = set(inspect.signature(GateDispatchTransport.send_gate_authored_packet).parameters)
+    assert "worker_base_url" in parameters
+    # A full endpoint parameter would make the path a registry value.
+    assert not (parameters & {"url", "endpoint", "worker_url", "execute_url"})
+
+
+def test_the_dispatch_surface_has_no_retry_or_timeout_knob() -> None:
+    """One attempt, and one deadline that comes from the packet."""
+    from constellation_node_sdk.gate_authority import GateDispatchTransportConfig
+    from constellation_node_sdk.gate_authority.dispatch import GateDispatchTransport
+
+    fields = set(GateDispatchTransportConfig.model_fields)
+    assert not {f for f in fields if "retr" in f.lower() or "timeout" in f.lower()}
+
+    parameters = set(inspect.signature(GateDispatchTransport.send_gate_authored_packet).parameters)
+    assert not (parameters & {"timeout", "timeout_ms", "timeout_seconds", "retries", "deadline"})
+
+
+def test_one_canonical_packet_http_implementation() -> None:
+    """
+    Both sides of Gate route their POST through one implementation.
+
+    Two copies drift, and the one that drifts is whichever is exercised less.
+    The check is that each caller *uses* the shared helper and that the helper
+    is defined exactly once — not that neither file mentions httpx, since both
+    legitimately do (a health GET on one side, a managed client on the other).
+    """
+    callers = {
+        "gate/client.py": SRC_ROOT / "gate" / "client.py",
+        "gate_authority/dispatch.py": SRC_ROOT / "gate_authority" / "dispatch.py",
+    }
+    for who, path in callers.items():
+        assert "post_packet_json" in path.read_text(encoding="utf-8"), (
+            f"{who} does not route its POST through the shared machinery"
+        )
+
+    definitions = [
+        path
+        for path in SRC_ROOT.rglob("*.py")
+        if "async def post_packet_json" in path.read_text(encoding="utf-8")
+    ]
+    assert len(definitions) == 1, f"canonical POST defined in {len(definitions)} places"
+    assert definitions[0].name == "_packet_http.py"
