@@ -25,7 +25,7 @@ remains, red on `main` too, and is not this PR's to resolve.
 | Repository | `Quantum-L9/Gate_SDK` |
 | Pull request | [#40](https://github.com/Quantum-L9/Gate_SDK/pull/40) |
 | Branch | `claude/gate-sdk-transport-closure-u2klcf` |
-| Candidate HEAD | `08413cd17ff9b52bbf4fc3088a63a760372345c9` |
+| Candidate HEAD | `bfe6642062a85a720ad8c25e96446d4df1c299ac` (13 commits, 40 files, +7144/-178) |
 | Base (`origin/main`) | `d09fe58a6cd68ef8aa883896c68badc95f96e090` |
 | Package version | `1.0.1` (unchanged) |
 | `requires-python` | `>=3.12` (unchanged) |
@@ -474,8 +474,8 @@ execute the real Gate→EIE runtime proof.
 repository: Quantum-L9/Gate_SDK
 pr: 40
 branch: claude/gate-sdk-transport-closure-u2klcf
-candidate_head: "08413cd17ff9b52bbf4fc3088a63a760372345c9"
-remote_pr_head: "PENDING_PUSH"
+candidate_head: "bfe6642062a85a720ad8c25e96446d4df1c299ac"
+remote_pr_head: "bfe6642062a85a720ad8c25e96446d4df1c299ac"
 application_transport:
   high_level_execute: true
   caller_manual_packet_required: false
@@ -529,7 +529,7 @@ validation:
   format: PASS
   mypy: PASS
   contracts: PASS
-  make_pr: PENDING
+  make_pr: PASS
 blocking_defects: []
 non_blocking_defects:
   - "leftover repo-root build/ shadows the build frontend in tests/packaging (local-only)"
