@@ -285,7 +285,10 @@ jobs:
           python -m pip install pip-audit
 
       - name: pip-audit (nightly strict)
-        run: pip-audit --strict
+        # --strict fails the audit if dependency *collection* fails; it is
+        # orthogonal to CVE policy, so the nightly needs the same reviewed
+        # suppression list as the PR gate (.github/pip-audit-ignore.txt).
+        run: ./scripts/pip_audit_gated.sh --strict
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NIGHTLY SUMMARY — aggregator + GitHub step summary report

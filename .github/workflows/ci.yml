@@ -199,7 +199,11 @@ jobs:
           python -m pip install pip-audit
 
       - name: pip-audit
-        run: pip-audit
+        # Wrapper, not bare pip-audit: it applies the reviewed suppression list
+        # in .github/pip-audit-ignore.txt (pip-audit has no config file, so the
+        # alternative is three workflows each carrying their own copy) and fails
+        # closed when that list expires. Real findings still block merge.
+        run: ./scripts/pip_audit_gated.sh
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GATE 6 — Secret scan

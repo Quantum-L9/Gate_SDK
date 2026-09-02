@@ -1,0 +1,61 @@
+# pip-audit suppressions — single source for every gate that runs pip-audit
+# (ci.yml gate-5, nightly.yml, release-publish.yml). Consumed by
+# scripts/pip_audit_gated.sh; pip-audit has no config-file support, so the
+# script turns these into repeated --ignore-vuln flags.
+#
+# Format: one vulnerability ID per line. Blank lines and #-comments ignored.
+# Every entry MUST carry a rationale comment directly above it.
+#
+# EXPIRES: 2026-12-01
+#
+# The expiry is enforced, not documentary: after that date
+# scripts/pip_audit_gated.sh fails and the gate goes red until a human
+# re-reviews this file. That is deliberate — a suppression nobody revisits is
+# indistinguishable from a disabled scanner.
+#
+# ── cryptography 44.x, held below 45 for Odoo.sh pyOpenSSL compatibility ──
+#
+# Why these cannot simply be fixed by upgrading:
+#
+#   pyproject.toml pins "cryptography>=43.0.0,<45". The ceiling exists because
+#   the Odoo.sh container that consumes this SDK (cryptoxdog/IB-Odoo_19) ships
+#   an old pyOpenSSL whose compiled bindings break against newer cryptography:
+#   a mismatched pair raises `AttributeError: module 'lib' has no attribute
+#   'GEN_EMAIL'` at import of `base`, which takes down the entire Odoo registry
+#   on every restart (incident 2026-07-16 → 2026-07-24). The consumer pins the
+#   exact working pair (cryptography==43.0.3 + pyOpenSSL==24.3.0).
+#
+#   The advisories below are fixed only in cryptography 46.0.5 and later — up
+#   to 50.0.0 for PYSEC-2026-3552. No version satisfies both "<45" and
+#   ">=46.0.5", so this is a compatibility conflict, not a deferred upgrade.
+#
+# Exposure assessment: this SDK uses `cryptography` solely for detached
+# signing and signature verification of TransportPacket headers
+# (src/constellation_node_sdk/security/). It runs no TLS/X.509 termination,
+# parses no attacker-supplied certificates, and exposes no PKCS#7/S-MIME or
+# certificate-chain parsing surface — which is where these advisories live.
+#
+# Removal trigger: the ceiling can be raised, and every line below deleted,
+# once the Odoo.sh base image ships a pyOpenSSL that tolerates cryptography
+# >= 46, or the consumer stops pulling pyOpenSSL transitively (paramiko,
+# josepy). Re-check at the expiry above.
+#
+# Owner: platform / Gate_SDK maintainers.
+
+# X.509/PKCS#7 parsing paths; fixed in 46.0.6. Not reachable from packet signing.
+PYSEC-2026-35
+
+# Fixed in 46.0.5. Certificate-handling path; SDK parses no certificates.
+PYSEC-2026-2141
+
+# Fixed in 50.0.0 — the furthest-out fix, and the widest gap from the "<45" ceiling.
+PYSEC-2026-3552
+
+# Fixed in 49.0.0.
+PYSEC-2026-3553
+
+# Fixed in 49.0.0.
+PYSEC-2026-3554
+
+# GHSA alias for the same cryptography 44.x family; fixed in 48.0.1.
+GHSA-537c-gmf6-5ccf
