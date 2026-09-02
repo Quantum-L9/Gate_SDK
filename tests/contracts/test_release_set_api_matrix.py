@@ -110,8 +110,29 @@ def test_observed_call_site_keywords_are_a_subset_of_the_locked_signature(
 def test_consumed_class_keeps_its_members(consumer: str, entry: dict[str, Any]) -> None:
     """Attributes and methods a consumer reaches for are still present."""
     target = _resolve(entry["module"], entry["symbol"])
-    missing = [name for name in entry["attributes"] if not hasattr(target, name)]
+    missing = [name for name in entry["attributes"] if not _exposes_member(target, name)]
     assert not missing, f"{consumer} uses {entry['symbol']}.{missing} which no longer exists"
+
+
+def _exposes_member(target: Any, name: str) -> bool:
+    """A class exposes ``name`` as a class attribute, property, method, or an
+    instance attribute assigned from a same-named constructor keyword.
+
+    Error classes carry their diagnostics (``status_code``, ``direction``,
+    ``timeout_seconds``) as instance attributes set in ``__init__``; a class-level
+    ``hasattr`` alone cannot see them, so a consumer reading ``exc.status_code``
+    would go unprotected.
+    """
+    if hasattr(target, name):
+        return True
+    init = getattr(target, "__init__", None)
+    if init is None:
+        return False
+    try:
+        params = inspect.signature(init).parameters
+    except (TypeError, ValueError):
+        return False
+    return name in params
 
 
 @pytest.mark.parametrize(("consumer", "entry"), _cases("model_fields"))

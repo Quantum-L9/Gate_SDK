@@ -5,11 +5,12 @@
   "consumers": {
     "odoo": {
       "repository": "cryptoxdog/IB-Odoo_19",
-      "role": "rail origin \u2014 mints the request packet and sends it to Gate",
+      "role": "rail origin — supplies business inputs to GateClient.execute(); the SDK mints the packet and sends it to Gate",
       "call_sites": [
         "plasticos_gate/services/gate_client.py::send_action",
         "plasticos_gate/services/gate_client.py::send_converge_action",
         "plasticos_gate/services/gate_client.py::send_match_action",
+        "plasticos_gate/services/gate_client.py::classify_transport_failure",
         "plasticos_gate/services/gate_config.py::build_gate_client_config"
       ],
       "imports": [
@@ -18,42 +19,45 @@
           "symbols": [
             "GateClient",
             "GateClientConfig",
-            "create_transport_packet"
+            "TransportError",
+            "GateConfigurationError",
+            "GateConnectionError",
+            "GateHTTPError",
+            "GatePolicyError",
+            "GateResponseError",
+            "GateSecurityError",
+            "GateTimeoutError"
           ]
         }
       ],
       "signatures": [
         {
           "module": "constellation_node_sdk",
-          "symbol": "create_transport_packet",
+          "symbol": "GateClient.execute",
           "keyword_parameters": [
             "action",
             "payload",
             "tenant",
-            "source_node",
-            "destination_node",
-            "reply_to",
+            "idempotency_key",
+            "timeout_ms",
             "correlation_id",
+            "trace_id",
             "classification",
             "compliance_tags",
-            "idempotency_key",
-            "timeout_ms"
+            "retention_days",
+            "priority"
           ],
           "observed_call_site_keywords": [
             "action",
             "payload",
             "tenant",
-            "source_node",
-            "destination_node",
-            "reply_to",
             "correlation_id",
-            "classification",
             "compliance_tags",
             "idempotency_key",
             "timeout_ms"
           ],
           "observed_in": "plasticos_gate/services/gate_client.py::send_action",
-          "note": "send_action forwards idempotency_key from send_converge_action and computes timeout_ms as int(config.timeout_seconds * 1000), so the packet budget and the caller's HTTP budget come from one config value. Odoo therefore depends on the SDK carrying that integer through unchanged \u2014 see the exact-integer behavior."
+          "note": "Odoo no longer builds a TransportPacket. send_action hands business inputs to GateClient.execute; timeout_ms is int(config.timeout_seconds * 1000) so the packet budget and the socket deadline come from one validated config value. Odoo depends on the SDK carrying that integer unchanged."
         }
       ],
       "members": [
@@ -61,9 +65,34 @@
           "module": "constellation_node_sdk",
           "symbol": "GateClient",
           "attributes": [
+            "execute",
             "send_to_gate",
             "health",
             "gate_url"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "GateHTTPError",
+          "attributes": [
+            "status_code",
+            "response_text",
+            "is_client_error",
+            "is_server_error"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "GateTimeoutError",
+          "attributes": [
+            "timeout_seconds"
+          ]
+        },
+        {
+          "module": "constellation_node_sdk",
+          "symbol": "GateSecurityError",
+          "attributes": [
+            "direction"
           ]
         }
       ],
@@ -75,7 +104,12 @@
             "gate_url",
             "local_node",
             "timeout_seconds",
-            "allowed_gate_destination"
+            "allowed_gate_destination",
+            "signing_key",
+            "signing_key_id",
+            "signing_algorithm",
+            "verify_response_signatures",
+            "verifying_keys"
           ]
         }
       ],
@@ -90,26 +124,16 @@
       ],
       "provenance": {
         "repository": "cryptoxdog/IB-Odoo_19",
-        "pull_requests": [
-          163,
-          164
-        ],
-        "stack_head": 164,
-        "head_sha": "26ef06b790e5dccedeb1deadc7601da8715c9ee6",
-        "base_pr_head_sha": "b9a59b4fda9179878a372641659cebb0b9bfa056",
-        "merged_via": [
-          163,
-          164
-        ],
-        "read_at": "refs/heads/Staging after squash-merge of #163 (includes #164)",
+        "head_sha": "61b3b4b1ab6f0250b33001f83b2951714e543208",
+        "read_at": "refs/heads/Staging (#171) plus the integration-repair branch claude/ib-odoo-gate-eie-audit-eipf7h that pins this SDK release; call sites read from plasticos_gate/services/gate_client.py and gate_config.py",
         "access": "read-only git fetch; no runtime or test-time dependency"
       },
       "canonical_action": "converge",
-      "canonical_action_source": "plasticos_gate/services/gate_config.py \u2014 GateStatus.enrichment_action defaults to 'converge'; overridable via the plasticos.gate.enrichment_action config parameter. Gate_SDK neither knows nor validates this value."
+      "canonical_action_source": "plasticos_gate/services/gate_config.py — get_enrichment_action() defaults to 'converge'; overridable via the plasticos.gate.enrichment_action config parameter. Gate_SDK neither knows nor validates this value."
     },
     "gate": {
       "repository": "Quantum-L9/Constellation.Gate",
-      "role": "rail hub \u2014 validates ingress, derives the worker packet, returns the response packet",
+      "role": "rail hub — validates ingress, derives the worker packet, returns the response packet",
       "call_sites": [
         "constellation-gate/src/constellation_gate/routing/dispatch.py",
         "constellation-gate/src/constellation_gate/boundary/delegation_factory.py",
@@ -280,7 +304,7 @@
     },
     "eie": {
       "repository": "Quantum-L9/Enrichment.Inference.Engine",
-      "role": "rail worker \u2014 hosts the SDK runtime, registers action handlers, returns the response payload",
+      "role": "rail worker — hosts the SDK runtime, registers action handlers, returns the response payload",
       "call_sites": [
         "app/main.py (create_node_app, NodeRuntimeConfig, LifecycleHook, clear_handlers)",
         "app/engines/orchestration_layer.py (register_handler)",
@@ -401,7 +425,7 @@
             "max_packet_bytes",
             "max_attachment_size_bytes"
           ],
-          "note": "EIE pins the three size fields explicitly, guarding against an SDK default set that once made NodeRuntimeConfig unconstructible (attachment ceiling 10 MiB above a 256 KiB packet ceiling, which the model's own validator rejects). That defect is already fixed on this SDK's main \u2014 see the self-consistency behavior \u2014 so the pinning is now belt-and-braces rather than a workaround."
+          "note": "EIE pins the three size fields explicitly, guarding against an SDK default set that once made NodeRuntimeConfig unconstructible (attachment ceiling 10 MiB above a 256 KiB packet ceiling, which the model's own validator rejects). That defect is already fixed on this SDK's main — see the self-consistency behavior — so the pinning is now belt-and-braces rather than a workaround."
         }
       ],
       "behaviors": [
