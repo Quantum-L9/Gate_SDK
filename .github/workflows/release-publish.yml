@@ -168,7 +168,7 @@ jobs:
         # --skip-editable entirely. Real vulnerability findings still exit 1
         # regardless of --strict, so this gate still fails closed on CVEs in
         # actual third-party dependencies.
-        run: pip-audit --skip-editable
+        run: ./scripts/pip_audit_gated.sh --skip-editable
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GATE 4 — Build release artifacts
