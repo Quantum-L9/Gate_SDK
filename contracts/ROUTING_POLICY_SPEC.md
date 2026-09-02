@@ -1,49 +1,53 @@
 # Routing Policy Specification
 
-## Core rule
+## Purpose
+
+All node-originated follow-up traffic must return to Gate so Gate remains the
+only hop that may address workers.
+
+## Rules
+
+### Core rule
 
 **All node-originated follow-up traffic must return to Gate.**
 
-## Allowed patterns
+### Allowed patterns
 
-### Client ingress
 ```text
 client -> gate
-Orchestrator or worker follow-up
 node -> gate
-Gate dispatch
 gate -> worker
-Forbidden pattern
+```
+
+Forbidden pattern:
+
+```text
 node-a -> node-b
+```
+
 No worker or orchestrator may directly target another worker node.
 
-Required packet semantics
-Node-origin packet
-provenance.origin_kind == "node"
+### Required packet semantics
 
-address.source_node == local node
+Node-origin packet:
 
-address.destination_node == "gate"
+- `provenance.origin_kind == "node"`
+- `address.source_node ==` local node
+- `address.destination_node == "gate"`
+- `provenance.original_source_node ==` local node
 
-provenance.original_source_node == local node
+Gate dispatch packet:
 
-Gate dispatch packet
-provenance.origin_kind == "gate"
+- `provenance.origin_kind == "gate"`
+- `provenance.resolved_by_gate == true`
+- `address.source_node == "gate"`
+- `address.destination_node ==` resolved worker node
 
-provenance.resolved_by_gate == true
+## Invariants
 
-address.source_node == "gate"
+Policy enforcement points:
 
-address.destination_node == resolved worker node
-
-Policy enforcement points
-SDK Gate client
-
-Gate ingress validator
-
-Gate routing policy validator
-
-architecture tests
-
-
-```markdown
+- SDK Gate client
+- Gate ingress validator
+- Gate routing policy validator
+- architecture tests

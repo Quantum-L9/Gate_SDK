@@ -1,10 +1,27 @@
 # TransportPacket Specification
 
+## Purpose
+
+`TransportPacket` is the canonical transport unit for Constellation.
+
+All ingress, inter-node routing, orchestration, and responses use the same packet type.
+
+## Fields
+
+Canonical fields live in `contracts/transport-packet.schema.json`. The sections
+below document hashes, signatures, lineage, provenance, and hop trace.
+
+## Invariants
+
 ## Overview
 
 `TransportPacket` is the canonical transport unit for Constellation.
 
 All ingress, inter-node routing, orchestration, and responses use the same packet type.
+
+## Schema
+
+Canonical JSON Schema: `contracts/transport-packet.schema.json`.
 
 ## Core invariants
 

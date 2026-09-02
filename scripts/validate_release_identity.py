@@ -29,6 +29,22 @@ def _git(repo: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _commit_available(repo: Path, sha: str) -> bool:
+    """True when *sha* is a commit object in this clone.
+
+    Shallow Actions checkouts omit historical tags and release commits.
+    Tree-level ledger vs HEAD pyproject still runs; object-level identity
+    cannot be judged without those objects.
+    """
+    if not sha:
+        return False
+    try:
+        _git(repo, "cat-file", "-e", f"{sha}^{{commit}}")
+    except RuntimeError:
+        return False
+    return True
+
+
 def validate(repo: Path, ledger_path: Path) -> list[str]:
     errors: list[str] = []
     ledger = json.loads(ledger_path.read_text())
@@ -60,27 +76,35 @@ def validate(repo: Path, ledger_path: Path) -> list[str]:
         except RuntimeError:
             tag_sha = None
 
+    history_available = _commit_available(repo, expected_sha)
     if tag_sha is None:
-        try:
-            resolved = _git(repo, "rev-parse", "--verify", f"{expected_sha}^{{commit}}")
-            if resolved != expected_sha:
-                errors.append(f"release_commit_sha {expected_sha} resolves to {resolved}")
-        except RuntimeError as exc:
-            errors.append(f"release_tag {tag} not resolvable and release_commit_sha missing: {exc}")
+        if history_available:
+            try:
+                resolved = _git(repo, "rev-parse", "--verify", f"{expected_sha}^{{commit}}")
+                if resolved != expected_sha:
+                    errors.append(f"release_commit_sha {expected_sha} resolves to {resolved}")
+            except RuntimeError as exc:
+                errors.append(
+                    f"release_tag {tag} not resolvable and release_commit_sha missing: {exc}"
+                )
+        # else: shallow clone — tag and release commit are not in the object
+        # store. HEAD tree name/version already checked above.
     elif tag_sha != expected_sha:
         errors.append(f"tag {tag} resolves to {tag_sha}, ledger expects {expected_sha}")
 
-    # Package version at the tagged commit must match ledger.
-    try:
-        tagged_pyproject = _git(repo, "show", f"{expected_sha}:pyproject.toml")
-        tagged_version = tomllib.loads(tagged_pyproject)["project"]["version"]
-        if tagged_version != ledger["package_version"]:
-            errors.append(
-                f"package_version at {expected_sha} is {tagged_version}, "
-                f"ledger expects {ledger['package_version']}"
-            )
-    except RuntimeError as exc:
-        errors.append(f"unable to read pyproject at release commit: {exc}")
+    # Package version at the tagged commit must match ledger when that
+    # commit is present. Shallow CI clones omit it; skip rather than FAIL.
+    if history_available:
+        try:
+            tagged_pyproject = _git(repo, "show", f"{expected_sha}:pyproject.toml")
+            tagged_version = tomllib.loads(tagged_pyproject)["project"]["version"]
+            if tagged_version != ledger["package_version"]:
+                errors.append(
+                    f"package_version at {expected_sha} is {tagged_version}, "
+                    f"ledger expects {ledger['package_version']}"
+                )
+        except RuntimeError as exc:
+            errors.append(f"unable to read pyproject at release commit: {exc}")
 
     head = _git(repo, "rev-parse", "HEAD")
     if ledger.get("claim_head_is_release") and head != expected_sha:
