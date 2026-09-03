@@ -8,9 +8,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed
-- **gate/config.py** — `get_gate_client_config_from_env()` now reads `L9_VERIFYING_KEYS_JSON` into `GateClientConfig.verifying_keys` (same env contract as the worker runtime). It previously hard-coded an empty map while still setting `verify_response_signatures` from `L9_REQUIRE_SIGNATURE`, so a node that required signatures could only resolve its *own* key id — and Gate signs the responses it authors with Gate's key id. Every env-configured node therefore rejected every signed Gate response with `GateSecurityError: no verifying key available for transport signature verification`. Found by the EIE ↔ Gate ↔ CEG real-process seam E2E (2026-09-02); malformed JSON now fails fast instead of silently disabling verification.
-
 ### Added
 - **gate_authority/** — `GateDispatchTransport.send_gate_authored_packet()`, the Gate→worker transport. Closes the last transport shadow: Constellation.Gate hand-rolled the POST, status check, JSON decode, and `TransportPacket.model_validate`, and flattened every failure into `RuntimeError`. It lives in its own namespace, exported from neither the package root nor `gate`, and is safe to exist because authority is validated on the **packet** — sourced from Gate, replied to Gate, addressed to the named target, `resolved_by_gate`, `route_kind=external_ingress` — not on the caller. Importing it grants nothing; an application cannot mint a packet that passes. The check calls the worker's own `validate_execute_ingress_packet` rather than restating it. The SDK does not route: target and base URL come from Gate, and it never resolves actions, queries a registry, load-balances, fails over, or marks health.
 - **gate_authority/errors.py** — `GateDispatchError` and its subclasses (`GateDispatchAuthorityError`, `GateDispatchConfigurationError`, `GateDispatchSecurityError`, `WorkerConnectionError`, `WorkerTimeoutError`, `WorkerHTTPError`, `WorkerResponseError`). A separate hierarchy from `GateClientError` on purpose: `GateConnectionError` would read as "could not reach Gate" while meaning a worker was down.
@@ -31,6 +28,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 - **gate/client.py** — `send_to_gate()` signed the packet *after* validating it, so outbound validation judged a different artifact than the one sent, and `require_signature=True` rejected every packet for a missing signature it was about to add — making self-signed traffic impossible. Signing now precedes validation.
+- **gate/config.py** — `get_gate_client_config_from_env()` now reads `L9_VERIFYING_KEYS_JSON` into `GateClientConfig.verifying_keys` (same env contract as the worker runtime). It previously hard-coded an empty map while still setting `verify_response_signatures` from `L9_REQUIRE_SIGNATURE`, so a node that required signatures could only resolve its *own* key id — and Gate signs the responses it authors with Gate's key id. Every env-configured node therefore rejected every signed Gate response with `GateSecurityError: no verifying key available for transport signature verification`. Found by the EIE ↔ Gate ↔ CEG real-process seam E2E (2026-09-02); malformed JSON now fails fast instead of silently disabling verification.
 
 ### Unchanged
 - The wire contract. `contracts/transport-packet.schema.json` regenerates byte-identical; `TransportPacket`, hashing, `derive()`, and hop semantics are untouched.
