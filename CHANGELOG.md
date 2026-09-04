@@ -8,6 +8,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] — 2026-09-02
+
+Release identity for the coordinated IB-Odoo_19 → Gate_SDK → Constellation.Gate
+→ Enrichment.Inference.Engine set. The public surface below shipped on `main`
+across PRs #40, #42 and #43 without a version bump, so every consumer pinned a
+different pull-request commit and no pin agreed with the release ledger. This
+release names one immutable commit for all three consumers
+(`contracts/RELEASE_IDENTITY_LEDGER.json`).
+
 ### Added
 - **gate_authority/** — `GateDispatchTransport.send_gate_authored_packet()`, the Gate→worker transport. Closes the last transport shadow: Constellation.Gate hand-rolled the POST, status check, JSON decode, and `TransportPacket.model_validate`, and flattened every failure into `RuntimeError`. It lives in its own namespace, exported from neither the package root nor `gate`, and is safe to exist because authority is validated on the **packet** — sourced from Gate, replied to Gate, addressed to the named target, `resolved_by_gate`, `route_kind=external_ingress` — not on the caller. Importing it grants nothing; an application cannot mint a packet that passes. The check calls the worker's own `validate_execute_ingress_packet` rather than restating it. The SDK does not route: target and base URL come from Gate, and it never resolves actions, queries a registry, load-balances, fails over, or marks health.
 - **gate_authority/errors.py** — `GateDispatchError` and its subclasses (`GateDispatchAuthorityError`, `GateDispatchConfigurationError`, `GateDispatchSecurityError`, `WorkerConnectionError`, `WorkerTimeoutError`, `WorkerHTTPError`, `WorkerResponseError`). A separate hierarchy from `GateClientError` on purpose: `GateConnectionError` would read as "could not reach Gate" while meaning a worker was down.

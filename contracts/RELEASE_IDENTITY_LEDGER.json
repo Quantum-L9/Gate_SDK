@@ -2,42 +2,34 @@
   "schema": "l9.gate_sdk.release_identity_ledger.v1",
   "distribution_name": "constellation-node-sdk",
   "import_name": "constellation_node_sdk",
-  "package_version": "1.0.1",
+  "package_version": "1.1.0",
   "protocol_version": "1.0",
   "python_requires": ">=3.12",
-  "release_tag": "v1.0.1",
-  "release_commit_sha": "a770e8531dc1c59ce01e1dbb0f4162785d9dda89",
-  "release_tag_object": "e01b437c102c49d33ad838520833961f10d4e5c8",
+  "release_tag": "v1.1.0",
+  "release_commit_sha": "2b2f53a28a59bbfb2fa45f5eac32b722d802209a",
+  "release_tag_object": null,
   "github_release_url": null,
   "github_release_status": "missing_create_later",
   "delivery_branch": "main",
   "delivery_policy": "PR_only_no_direct_merge",
   "consumer_pin": {
     "preferred": "immutable_commit_sha",
-    "sha": "a770e8531dc1c59ce01e1dbb0f4162785d9dda89",
-    "tag": "v1.0.1",
-    "note": "Pin consumers to release_commit_sha until a GitHub Release exists; do not pin floating main."
+    "sha": "2b2f53a28a59bbfb2fa45f5eac32b722d802209a",
+    "tag": "v1.1.0",
+    "note": "Pin consumers (IB-Odoo_19 requirements.txt, Constellation.Gate and EIE pyproject) to release_commit_sha until a GitHub Release exists; do not pin floating main."
   },
   "artifacts": {
-    "wheel": {
-      "filename": "constellation_node_sdk-1.0.1-py3-none-any.whl",
-      "sha256": "f3023ff6369c51b4d54c842970eb03d8a9f1e720fac575cd17cdde05c48e0afc",
-      "built_from_commit": "ead0f48166f510683e9dec6ff7383258cc4307f2",
-      "note": "Local reproducible build from worktree HEAD for TASK-005; not a published GitHub Release asset."
-    },
-    "sdist": {
-      "filename": "constellation_node_sdk-1.0.1.tar.gz",
-      "sha256": "8637b4281a472aca0ac5af8251553f2bbcfbf6186c9e4bcce519c044747d0df6",
-      "built_from_commit": "ead0f48166f510683e9dec6ff7383258cc4307f2",
-      "note": "Local reproducible build from worktree HEAD for TASK-005; not a published GitHub Release asset."
-    }
+    "wheel": null,
+    "sdist": null,
+    "note": "No release artifact built yet for 1.1.0; consumers install from the release commit via git+https."
   },
   "agreement_rules": [
     "package_version must equal pyproject.toml [project].version at release_commit_sha",
-    "release_tag must resolve to release_commit_sha",
-    "HEAD may advance beyond release_commit_sha while package_version remains 1.0.1 only if consumers pin release_commit_sha (not HEAD)",
-    "claiming HEAD as the released identity while HEAD != release_commit_sha is a FAIL"
+    "release_tag must resolve to release_commit_sha once created",
+    "HEAD may advance beyond release_commit_sha while package_version remains 1.1.0 only if consumers pin release_commit_sha (not HEAD)",
+    "claiming HEAD as the released identity while HEAD != release_commit_sha is a FAIL",
+    "every consumer of the coordinated set pins the same release_commit_sha; a split pin (one consumer on a commit lacking GateClient.execute) is a FAIL"
   ],
-  "observed_at_build": "2026-08-01T21:49:00+00:00",
-  "task_id": "TASK-005"
+  "observed_at_build": "2026-09-02T00:00:00+00:00",
+  "task_id": "ib-odoo-gate-eie-audit-repair"
 }

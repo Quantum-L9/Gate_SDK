@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "constellation-node-sdk"
-version = "1.0.1"
+version = "1.1.0"
 description = "L9 Constellation Node SDK — TransportPacket runtime, Gate client, and node factory"
 readme = "README.md"
 requires-python = ">=3.12"
