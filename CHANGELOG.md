@@ -39,6 +39,7 @@ release names one immutable commit for all three consumers
 
 ### Fixed
 - **gate/client.py** — `send_to_gate()` signed the packet *after* validating it, so outbound validation judged a different artifact than the one sent, and `require_signature=True` rejected every packet for a missing signature it was about to add — making self-signed traffic impossible. Signing now precedes validation.
+- **gate/config.py** — `get_gate_client_config_from_env()` now reads `L9_VERIFYING_KEYS_JSON` into `GateClientConfig.verifying_keys` (same env contract as the worker runtime). It previously hard-coded an empty map while still setting `verify_response_signatures` from `L9_REQUIRE_SIGNATURE`, so a node that required signatures could only resolve its *own* key id — and Gate signs the responses it authors with Gate's key id. Every env-configured node therefore rejected every signed Gate response with `GateSecurityError: no verifying key available for transport signature verification`. Found by the EIE ↔ Gate ↔ CEG real-process seam E2E (2026-09-02); malformed JSON now fails fast instead of silently disabling verification.
 
 ### Unchanged
 - The wire contract. `contracts/transport-packet.schema.json` regenerates byte-identical; `TransportPacket`, hashing, `derive()`, and hop semantics are untouched.

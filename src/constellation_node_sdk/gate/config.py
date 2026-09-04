@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -10,6 +11,30 @@ def _env_optional_int(name: str) -> int | None:
     if raw is None or not raw.strip():
         return None
     return int(raw)
+
+
+def _env_verifying_keys(name: str) -> dict[str, str]:
+    """Parse a JSON object of ``key_id -> key material`` from the environment.
+
+    Blank/unset yields ``{}``. Anything that is not a flat string->string object
+    is a configuration error and fails fast rather than silently disabling
+    response verification.
+    """
+    raw = os.getenv(name, "").strip()
+    if not raw or raw == "{}":
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{name} is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{name} must be a JSON object")
+    result: dict[str, str] = {}
+    for key_id, key_value in parsed.items():
+        if not isinstance(key_id, str) or not isinstance(key_value, str):
+            raise ValueError(f"{name} keys and values must all be strings")
+        result[key_id] = key_value
+    return result
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -149,7 +174,12 @@ def get_gate_client_config_from_env() -> GateClientConfig:
         signing_key_id=signing_key_id,
         signing_algorithm=signing_algorithm,
         verify_response_signatures=verify_response_signatures,
-        verifying_keys={},
+        # Gate signs the responses it authors with *its* key id, so a node that
+        # requires signatures must be able to resolve that id. The same
+        # L9_VERIFYING_KEYS_JSON the worker runtime reads applies here; an
+        # empty map used to make every env-configured node reject every signed
+        # Gate response with "no verifying key available".
+        verifying_keys=_env_verifying_keys("L9_VERIFYING_KEYS_JSON"),
         verify_hop_signatures=_env_bool("L9_VERIFY_HOP_SIGNATURES", False),
         allowed_gate_destination=os.getenv("GATE_ALLOWED_DESTINATION", "gate"),
         max_timeout_ms=_env_optional_int("GATE_CLIENT_MAX_TIMEOUT_MS"),

@@ -157,6 +157,42 @@ def test_get_gate_client_config_from_env_builds_config_from_environment(
     assert config.allowed_gate_destination == "gate-prod"
 
 
+def test_get_gate_client_config_from_env_reads_verifying_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A node that requires signatures must be able to verify Gate's key id.
+
+    Gate signs the response packets it authors with its own key id, never the
+    node's. Without L9_VERIFYING_KEYS_JSON reaching GateClientConfig, every
+    env-configured node rejected every signed Gate response.
+    """
+    monkeypatch.setenv("GATE_URL", "https://gate:9000")
+    monkeypatch.setenv("L9_NODE_NAME", "worker-a")
+    monkeypatch.setenv("L9_SIGNING_KEY", "node-secret")
+    monkeypatch.setenv("L9_SIGNING_KEY_ID", "worker-a-v1")
+    monkeypatch.setenv("L9_REQUIRE_SIGNATURE", "true")
+    monkeypatch.setenv(
+        "L9_VERIFYING_KEYS_JSON", '{"gate-v1": "gate-secret", "worker-a-v1": "node-secret"}'
+    )
+
+    config = get_gate_client_config_from_env()
+
+    assert config.verifying_keys == {"gate-v1": "gate-secret", "worker-a-v1": "node-secret"}
+    assert config.resolve_verifying_key("gate-v1") == "gate-secret"
+    assert config.verify_response_signatures is True
+
+
+@pytest.mark.parametrize("raw", ["not-json", "[1, 2]", '{"gate-v1": 1}'])
+def test_get_gate_client_config_from_env_rejects_malformed_verifying_keys(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    monkeypatch.setenv("GATE_URL", "https://gate:9000")
+    monkeypatch.setenv("L9_VERIFYING_KEYS_JSON", raw)
+
+    with pytest.raises(ValueError, match="L9_VERIFYING_KEYS_JSON"):
+        get_gate_client_config_from_env()
+
+
 def test_get_gate_client_config_from_env_uses_defaults_when_optional_vars_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
