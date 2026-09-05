@@ -29,6 +29,14 @@ def _git(repo: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _is_shallow(repo: Path) -> bool:
+    """True when this clone is a shallow git repository."""
+    try:
+        return _git(repo, "rev-parse", "--is-shallow-repository") == "true"
+    except RuntimeError:
+        return False
+
+
 def _commit_available(repo: Path, sha: str) -> bool:
     """True when *sha* is a commit object in this clone.
 
@@ -45,8 +53,9 @@ def _commit_available(repo: Path, sha: str) -> bool:
     return True
 
 
-def validate(repo: Path, ledger_path: Path) -> list[str]:
+def validate(repo: Path, ledger_path: Path) -> tuple[list[str], list[str]]:
     errors: list[str] = []
+    notes: list[str] = []
     ledger = json.loads(ledger_path.read_text())
     pyproject = tomllib.loads((repo / "pyproject.toml").read_text())
     project = pyproject["project"]
@@ -77,6 +86,7 @@ def validate(repo: Path, ledger_path: Path) -> list[str]:
             tag_sha = None
 
     history_available = _commit_available(repo, expected_sha)
+    shallow = _is_shallow(repo)
     if tag_sha is None:
         if history_available:
             try:
@@ -87,8 +97,15 @@ def validate(repo: Path, ledger_path: Path) -> list[str]:
                 errors.append(
                     f"release_tag {tag} not resolvable and release_commit_sha missing: {exc}"
                 )
-        # else: shallow clone — tag and release commit are not in the object
-        # store. HEAD tree name/version already checked above.
+        elif shallow:
+            notes.append(
+                "INFO: skipped tag and release-commit object checks (shallow clone)"
+            )
+        else:
+            errors.append(
+                f"release_tag {tag} and release_commit_sha {expected_sha} "
+                "are absent from a non-shallow clone"
+            )
     elif tag_sha != expected_sha:
         errors.append(f"tag {tag} resolves to {tag_sha}, ledger expects {expected_sha}")
 
@@ -115,7 +132,7 @@ def validate(repo: Path, ledger_path: Path) -> list[str]:
     if pin.get("sha") != expected_sha:
         errors.append("consumer_pin.sha must equal release_commit_sha")
 
-    return errors
+    return errors, notes
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -128,7 +145,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     ledger_path = args.ledger if args.ledger.is_absolute() else args.repo / args.ledger
-    errors = validate(args.repo, ledger_path)
+    errors, notes = validate(args.repo, ledger_path)
+    for note in notes:
+        print(note)
     if errors:
         print("FAIL: release identity disagreement")
         for err in errors:
