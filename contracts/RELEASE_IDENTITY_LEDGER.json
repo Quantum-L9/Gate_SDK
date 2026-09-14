@@ -6,17 +6,17 @@
   "protocol_version": "1.0",
   "python_requires": ">=3.12",
   "release_tag": "v1.1.0",
-  "release_commit_sha": "2b2f53a28a59bbfb2fa45f5eac32b722d802209a",
+  "release_commit_sha": "e9f829f982110be13752da8f18c7a9692e8ed908",
   "release_tag_object": null,
-  "github_release_url": null,
-  "github_release_status": "missing_create_later",
+  "github_release_url": "https://github.com/Quantum-L9/Gate_SDK/releases/tag/v1.1.0",
+  "github_release_status": "created",
   "delivery_branch": "main",
   "delivery_policy": "PR_only_no_direct_merge",
   "consumer_pin": {
-    "preferred": "immutable_commit_sha",
-    "sha": "2b2f53a28a59bbfb2fa45f5eac32b722d802209a",
-    "tag": "v1.1.0",
-    "note": "Pin consumers (IB-Odoo_19 requirements.txt, Constellation.Gate and EIE pyproject) to release_commit_sha until a GitHub Release exists; do not pin floating main."
+    "preferred": "moving_major_tag",
+    "sha": "e9f829f982110be13752da8f18c7a9692e8ed908",
+    "tag": "v1",
+    "note": "Pin consumers to @v1 (moving major tag). v1 currently resolves to e9f829f982110be13752da8f18c7a9692e8ed908 (v1.1.0). Pin immutable v1.1.0 only for a frozen build."
   },
   "artifacts": {
     "wheel": null,
@@ -31,5 +31,7 @@
     "every consumer of the coordinated set pins the same release_commit_sha; a split pin (one consumer on a commit lacking GateClient.execute) is a FAIL"
   ],
   "observed_at_build": "2026-09-02T00:00:00+00:00",
-  "task_id": "ib-odoo-gate-eie-audit-repair"
+  "task_id": "ib-odoo-gate-eie-audit-repair",
+  "major_tag": "v1",
+  "major_tag_policy": "v1 is a moving major tag; consumers pin @v1 to auto-adopt v1.x. Advance v1 to each new v1.x release commit. Immutable v1.1.0 pins a frozen build."
 }
