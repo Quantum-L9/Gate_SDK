@@ -79,10 +79,33 @@ def _resolve_local(repo: Path, ref: str) -> str | None:
     return None
 
 
+def _safe_remote(remote: str) -> str:
+    """Reject a remote that git would parse as an option.
+
+    Passing argv as a list and never invoking a shell stops *command*
+    injection, but not *argument* injection: ``git ls-remote
+    --upload-pack=<cmd> <repo>`` runs ``<cmd>``, so a --remote value beginning
+    with ``-`` is an execution vector on its own (SonarCloud
+    pythonsecurity:S8705). Callers pass --remote, so validate it here and use
+    --end-of-options below rather than trusting either alone.
+    """
+    if not remote or remote.startswith("-"):
+        msg = f"refusing remote {remote!r}: a remote must not begin with '-'"
+        raise ValueError(msg)
+    return remote
+
+
 def _resolve_remote(remote: str, ref: str) -> str | None:
     """Resolve ``refs/tags/<ref>`` at *remote*, preferring the peeled object."""
     try:
-        output = _git(Path.cwd(), "ls-remote", "--tags", remote, f"refs/tags/{ref}")
+        output = _git(
+            Path.cwd(),
+            "ls-remote",
+            "--tags",
+            "--end-of-options",
+            _safe_remote(remote),
+            f"refs/tags/{ref}",
+        )
     except RuntimeError:
         return None
     peeled: str | None = None
@@ -216,8 +239,14 @@ def validate(
         # The networked proof is extra evidence, never a replacement for the
         # structural ones, and it matches how the consumer validators layer
         # their two modes.
-        remote_release = _resolve_remote(remote, expected_tag)
-        remote_channel = _resolve_remote(remote, expected_channel)
+        try:
+            remote_release = _resolve_remote(remote, expected_tag)
+            remote_channel = _resolve_remote(remote, expected_channel)
+        except ValueError as exc:
+            # Fails closed like any other unresolvable tag, but says which of
+            # the two reasons it was.
+            errors.append(f"--verify-tag: {exc}")
+            return errors, notes
         # Required networked mode fails closed: an unresolvable tag is not a
         # warning, it is the absence of the proof this mode exists to produce.
         if remote_release is None:

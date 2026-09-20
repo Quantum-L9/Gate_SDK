@@ -294,6 +294,28 @@ def test_verify_tag_fails_when_the_remote_channel_has_moved(tmp_path: Path) -> N
     assert "compatibility channel" in completed.stdout
 
 
+def test_verify_tag_refuses_a_remote_git_would_read_as_an_option(tmp_path: Path) -> None:
+    """SonarCloud pythonsecurity:S8705.
+
+    argv is a list and no shell is involved, which stops command injection but
+    not argument injection: `git ls-remote --upload-pack=<cmd> <repo>` executes
+    <cmd>, so a --remote beginning with `-` is an execution vector by itself.
+    """
+    consumer = _seed_release_repo(tmp_path / "consumer")
+    completed = _run(
+        "--repo",
+        str(consumer),
+        "--ledger",
+        str(consumer / "contracts" / "L.json"),
+        "--verify-tag",
+        "--remote",
+        "--upload-pack=touch /tmp/pwned",
+    )
+    assert completed.returncode != 0, completed.stdout
+    assert "must not begin with" in completed.stdout
+    assert not Path("/tmp/pwned").exists()
+
+
 def test_verify_tag_fails_closed_when_the_remote_cannot_be_resolved(tmp_path: Path) -> None:
     consumer = _seed_release_repo(tmp_path / "consumer")
     completed = _run(
