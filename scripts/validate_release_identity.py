@@ -1,16 +1,44 @@
 #!/usr/bin/env python3
-"""Validate Gate_SDK release identity ledger against git + pyproject.
+"""Validate the Gate_SDK release-identity ledger against git + pyproject.
 
-Fails closed when tag, package version, and claimed release identity disagree.
+Gate_SDK is the release-identity authority for the Constellation set. The
+consumer compatibility contract is the *moving major tag* ``v{major}``, not a
+commit sha:
+
+    package version 1.1.0
+        -> immutable release tag  v1.1.0
+        -> moving channel         v1      <- what Gate / CEG / EIE declare
+
+A resolved commit sha is legitimate as generated-lock resolution, artifact
+provenance, or audit evidence. It is never the consumer compatibility
+contract, so this validator derives every expectation from the package version
+and refuses a ledger that reintroduces consumer sha policy.
+
+Modes
+-----
+default        Structural checks plus local tag resolution. A genuinely shallow
+               clone may skip object-level checks and says so.
+--verify-tag   Networked agreement. Resolves the release tag and the
+               compatibility channel from the canonical remote and fails closed
+               when either cannot be resolved.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import tomllib
 from pathlib import Path
+
+LEDGER_SCHEMA = "l9.gate_sdk.release_identity_ledger.v2"
+CANONICAL_REMOTE = "https://github.com/Quantum-L9/Gate_SDK.git"
+SHA_RE = re.compile(r"\b[0-9a-f]{40}\b")
+VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
+
+# Keys whose presence means the retired v1 consumer-sha policy is back.
+RETIRED_KEYS = ("consumer_pin", "release_commit_sha", "release_tag_object")
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -37,100 +65,191 @@ def _is_shallow(repo: Path) -> bool:
         return False
 
 
-def _commit_available(repo: Path, sha: str) -> bool:
-    """True when *sha* is a commit object in this clone.
+def _resolve_local(repo: Path, ref: str) -> str | None:
+    """Resolve *ref* to a commit object in this clone, peeling annotated tags."""
+    for candidate in (f"{ref}^{{commit}}", ref):
+        try:
+            return _git(repo, "rev-parse", "--verify", candidate)
+        except RuntimeError:
+            continue
+    return None
 
-    Shallow Actions checkouts omit historical tags and release commits.
-    Tree-level ledger vs HEAD pyproject still runs; object-level identity
-    cannot be judged without those objects.
-    """
-    if not sha:
-        return False
+
+def _resolve_remote(remote: str, ref: str) -> str | None:
+    """Resolve ``refs/tags/<ref>`` at *remote*, preferring the peeled object."""
     try:
-        _git(repo, "cat-file", "-e", f"{sha}^{{commit}}")
+        output = _git(Path.cwd(), "ls-remote", "--tags", remote, f"refs/tags/{ref}")
     except RuntimeError:
-        return False
-    return True
+        return None
+    peeled: str | None = None
+    direct: str | None = None
+    for line in output.splitlines():
+        sha, _, name = line.partition("\t")
+        if name == f"refs/tags/{ref}^{{}}":
+            peeled = sha.strip()
+        elif name == f"refs/tags/{ref}":
+            direct = sha.strip()
+    return peeled or direct
 
 
-def validate(repo: Path, ledger_path: Path) -> tuple[list[str], list[str]]:
+def derive_expectations(package_version: str) -> tuple[str, str]:
+    """Return (exact release tag, moving compatibility channel)."""
+    match = VERSION_RE.match(package_version)
+    if match is None:
+        msg = f"package_version {package_version!r} is not MAJOR.MINOR.PATCH"
+        raise ValueError(msg)
+    return f"v{package_version}", f"v{match.group(1)}"
+
+
+def check_ledger_policy(ledger: dict[str, object]) -> list[str]:
+    """Structural ledger policy — no git, no filesystem, no network."""
+    errors: list[str] = []
+
+    if ledger.get("schema") != LEDGER_SCHEMA:
+        errors.append(f"schema must be {LEDGER_SCHEMA}, got {ledger.get('schema')!r}")
+
+    for key in RETIRED_KEYS:
+        if key in ledger:
+            errors.append(
+                f"{key!r} is retired consumer-sha policy; the consumer contract is "
+                "the moving major channel"
+            )
+
+    contract = ledger.get("consumer_contract")
+    if not isinstance(contract, dict):
+        errors.append("consumer_contract object is missing")
+        return errors
+
+    if contract.get("mode") != "moving_major_tag":
+        errors.append(
+            f"consumer_contract.mode must be 'moving_major_tag', got {contract.get('mode')!r}"
+        )
+
+    channel = ledger.get("compatibility_channel")
+    if contract.get("required_ref") != channel:
+        errors.append(
+            f"consumer_contract.required_ref {contract.get('required_ref')!r} "
+            f"must equal compatibility_channel {channel!r}"
+        )
+
+    forbidden = contract.get("forbid_ref_kinds")
+    if not isinstance(forbidden, list) or not {"branch", "commit_sha", "fork"} <= set(forbidden):
+        errors.append("consumer_contract.forbid_ref_kinds must forbid branch, commit_sha, and fork")
+
+    # A sha anywhere inside the consumer contract is consumer-sha policy by
+    # another name, whatever the field is called.
+    if SHA_RE.search(json.dumps(contract)):
+        errors.append("consumer_contract must not contain a 40-character commit sha")
+
+    return errors
+
+
+def check_channel_agreement(release_sha: str | None, channel_sha: str | None) -> list[str]:
+    """The exact release tag and the moving channel must name one object."""
+    if release_sha is None or channel_sha is None:
+        return []
+    if release_sha != channel_sha:
+        return [
+            f"release tag resolves to {release_sha} but compatibility channel "
+            f"resolves to {channel_sha}; the channel must point at the approved release"
+        ]
+    return []
+
+
+def validate(
+    repo: Path,
+    ledger_path: Path,
+    *,
+    verify_tag: bool = False,
+    remote: str = CANONICAL_REMOTE,
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     notes: list[str] = []
     ledger = json.loads(ledger_path.read_text())
     pyproject = tomllib.loads((repo / "pyproject.toml").read_text())
     project = pyproject["project"]
 
+    errors.extend(check_ledger_policy(ledger))
+
     if project.get("name") != ledger.get("distribution_name"):
         errors.append(
             f"distribution_name mismatch: pyproject={project.get('name')} "
             f"ledger={ledger.get('distribution_name')}"
         )
-    if project.get("version") != ledger.get("package_version"):
+
+    package_version = ledger.get("package_version")
+    if project.get("version") != package_version:
         errors.append(
             f"package_version mismatch at HEAD tree: pyproject={project.get('version')} "
-            f"ledger={ledger.get('package_version')}"
+            f"ledger={package_version}"
         )
 
-    tag = ledger["release_tag"]
-    expected_sha = ledger["release_commit_sha"]
+    if not isinstance(package_version, str):
+        errors.append("package_version must be a string")
+        return errors, notes
 
-    # Prefer annotated/lightweight tag resolution; fall back for shallow CI
-    # clones that omit tags but still have the release commit reachable.
-    tag_sha: str | None = None
     try:
-        tag_sha = _git(repo, "rev-parse", f"{tag}^{{}}")
-    except RuntimeError:
-        try:
-            tag_sha = _git(repo, "rev-parse", tag)
-        except RuntimeError:
-            tag_sha = None
+        expected_tag, expected_channel = derive_expectations(package_version)
+    except ValueError as exc:
+        errors.append(str(exc))
+        return errors, notes
 
-    history_available = _commit_available(repo, expected_sha)
-    shallow = _is_shallow(repo)
-    if tag_sha is None:
-        if history_available:
-            try:
-                resolved = _git(repo, "rev-parse", "--verify", f"{expected_sha}^{{commit}}")
-                if resolved != expected_sha:
-                    errors.append(f"release_commit_sha {expected_sha} resolves to {resolved}")
-            except RuntimeError as exc:
-                errors.append(
-                    f"release_tag {tag} not resolvable and release_commit_sha missing: {exc}"
-                )
-        elif shallow:
+    release_tag = ledger.get("release_tag")
+    channel = ledger.get("compatibility_channel")
+    if release_tag != expected_tag:
+        errors.append(f"release_tag must be {expected_tag!r}, got {release_tag!r}")
+    if channel != expected_channel:
+        errors.append(f"compatibility_channel must be {expected_channel!r}, got {channel!r}")
+
+    if verify_tag:
+        release_sha = _resolve_remote(remote, expected_tag)
+        channel_sha = _resolve_remote(remote, expected_channel)
+        # Required networked mode fails closed: an unresolvable tag is not a
+        # warning, it is the absence of the proof this mode exists to produce.
+        if release_sha is None:
+            errors.append(f"--verify-tag: {expected_tag} unresolvable at {remote}")
+        if channel_sha is None:
+            errors.append(f"--verify-tag: {expected_channel} unresolvable at {remote}")
+        disagreement = check_channel_agreement(release_sha, channel_sha)
+        errors.extend(disagreement)
+        if release_sha is not None and channel_sha is not None and not disagreement:
+            notes.append(f"NETWORK: {expected_tag} == {expected_channel} == {channel_sha}")
+        return errors, notes
+
+    release_sha = _resolve_local(repo, expected_tag)
+    channel_sha = _resolve_local(repo, expected_channel)
+
+    if release_sha is None or channel_sha is None:
+        missing = [
+            name
+            for name, sha in ((expected_tag, release_sha), (expected_channel, channel_sha))
+            if sha is None
+        ]
+        if _is_shallow(repo):
             notes.append(
-                "INFO: skipped tag and release-commit object checks (shallow clone)"
+                f"INFO: skipped tag object checks (shallow clone); unresolved: {', '.join(missing)}"
             )
         else:
             errors.append(
-                f"release_tag {tag} and release_commit_sha {expected_sha} "
-                "are absent from a non-shallow clone"
+                f"{', '.join(missing)} absent from a non-shallow clone — "
+                "release identity cannot be judged without the tag objects"
             )
-    elif tag_sha != expected_sha:
-        errors.append(f"tag {tag} resolves to {tag_sha}, ledger expects {expected_sha}")
+    else:
+        errors.extend(check_channel_agreement(release_sha, channel_sha))
 
-    # Package version at the tagged commit must match ledger when that
-    # commit is present. Shallow CI clones omit it; skip rather than FAIL.
-    if history_available:
+    # Package version at the tagged release must match the ledger when that
+    # object is present. Shallow CI clones omit it; note rather than FAIL.
+    if release_sha is not None:
         try:
-            tagged_pyproject = _git(repo, "show", f"{expected_sha}:pyproject.toml")
-            tagged_version = tomllib.loads(tagged_pyproject)["project"]["version"]
-            if tagged_version != ledger["package_version"]:
+            tagged = _git(repo, "show", f"{release_sha}:pyproject.toml")
+            tagged_version = tomllib.loads(tagged)["project"]["version"]
+            if tagged_version != package_version:
                 errors.append(
-                    f"package_version at {expected_sha} is {tagged_version}, "
-                    f"ledger expects {ledger['package_version']}"
+                    f"package_version at {expected_tag} ({release_sha}) is "
+                    f"{tagged_version}, ledger expects {package_version}"
                 )
         except RuntimeError as exc:
-            errors.append(f"unable to read pyproject at release commit: {exc}")
-
-    head = _git(repo, "rev-parse", "HEAD")
-    if ledger.get("claim_head_is_release") and head != expected_sha:
-        errors.append(f"ledger claims HEAD is release but HEAD={head} release={expected_sha}")
-
-    # Consumer pin must be the immutable release commit.
-    pin = ledger.get("consumer_pin", {})
-    if pin.get("sha") != expected_sha:
-        errors.append("consumer_pin.sha must equal release_commit_sha")
+            errors.append(f"unable to read pyproject at {expected_tag}: {exc}")
 
     return errors, notes
 
@@ -143,9 +262,15 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=Path("contracts/RELEASE_IDENTITY_LEDGER.json"),
     )
+    parser.add_argument(
+        "--verify-tag",
+        action="store_true",
+        help="resolve the release tag and channel from the canonical remote; fails closed",
+    )
+    parser.add_argument("--remote", default=CANONICAL_REMOTE)
     args = parser.parse_args(argv)
     ledger_path = args.ledger if args.ledger.is_absolute() else args.repo / args.ledger
-    errors, notes = validate(args.repo, ledger_path)
+    errors, notes = validate(args.repo, ledger_path, verify_tag=args.verify_tag, remote=args.remote)
     for note in notes:
         print(note)
     if errors:
@@ -153,7 +278,8 @@ def main(argv: list[str] | None = None) -> int:
         for err in errors:
             print(f"- {err}")
         return 1
-    print(f"PASS: release identity agrees ({ledger_path})")
+    mode = "networked" if args.verify_tag else "local"
+    print(f"PASS: release identity agrees ({ledger_path}, {mode})")
     return 0
 
 

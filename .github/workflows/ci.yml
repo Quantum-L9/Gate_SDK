@@ -85,6 +85,11 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
+          # Release identity is judged against the tag objects. A shallow
+          # checkout has none, and the validator would take its shallow-clone
+          # exception instead of proving anything.
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -98,6 +103,12 @@ jobs:
 
       - name: Validate contracts
         run: python scripts/validate_contracts.py
+
+      - name: Validate release identity (structural + local tags)
+        # Gate_SDK owns what the moving major channel means for Gate, CEG and
+        # EIE. Structural policy plus local tag agreement runs on every PR;
+        # the networked resolution is a release gate (release.yml).
+        run: python scripts/validate_release_identity.py
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GATE 3 — Schema drift check

@@ -38,6 +38,13 @@ jobs:
         run: |
           python scripts/validate_contracts.py
 
+      - name: Validate release identity (networked tag agreement)
+        # Fails closed: the exact release tag and the moving major channel must
+        # resolve to one object at the canonical remote. Consumers declare that
+        # channel, so an unresolvable or split channel must not reach a release.
+        run: |
+          python scripts/validate_release_identity.py --verify-tag
+
       - name: Run quality gates
         run: |
           ruff check src tests scripts
