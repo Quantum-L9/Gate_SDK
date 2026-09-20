@@ -15,8 +15,8 @@
   },
   "delivery_branch": "main",
   "delivery_policy": "PR_only_no_direct_merge",
-  "github_release_url": null,
-  "github_release_status": "missing_create_later",
+  "github_release_url": "https://github.com/Quantum-L9/Gate_SDK/releases/tag/v1.1.0",
+  "github_release_status": "created",
   "artifacts": {
     "wheel": null,
     "sdist": null,
@@ -35,7 +35,7 @@
   "provenance": {
     "authority": "none",
     "note": "Non-authoritative audit evidence. No validator — in this repository or in any consumer — may treat these values as a required dependency identity.",
-    "superseded_consumer_pin_policy": "l9.gate_sdk.release_identity_ledger.v1 required consumers to pin release_commit_sha 2b2f53a28a59bbfb2fa45f5eac32b722d802209a. That policy is retired by the version-governed contract above.",
+    "superseded_consumer_pin_policy": "Schema v1 carried a consumer_pin object. It first required consumers to pin release_commit_sha 2b2f53a28a59bbfb2fa45f5eac32b722d802209a, then was amended on this branch to preferred=moving_major_tag while still storing a sha. Both are retired: under v2 the consumer contract is the channel alone, and no sha is normative.",
     "observed_channel_object": "e9f829f982110be13752da8f18c7a9692e8ed908",
     "observed_at": "2026-09-20T00:00:00+00:00"
   },
