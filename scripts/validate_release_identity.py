@@ -80,19 +80,32 @@ def _resolve_local(repo: Path, ref: str) -> str | None:
 
 
 def _safe_remote(remote: str) -> str:
-    """Reject a remote that git would parse as an option.
+    """Return a remote from a fixed set — never the caller's string.
 
     Passing argv as a list and never invoking a shell stops *command*
     injection, but not *argument* injection: ``git ls-remote
-    --upload-pack=<cmd> <repo>`` runs ``<cmd>``, so a --remote value beginning
-    with ``-`` is an execution vector on its own (SonarCloud
-    pythonsecurity:S8705). Callers pass --remote, so validate it here and use
-    --end-of-options below rather than trusting either alone.
+    --upload-pack=<cmd> <repo>`` runs ``<cmd>``, so a remote beginning with
+    ``-`` is an execution vector on its own (SonarCloud
+    pythonsecurity:S8705).
+
+    The canonical remote is the contract, so it is matched by equality and the
+    module constant is returned: what reaches git is provably not built from
+    the argument. Anything else is a local fixture path used by the tests,
+    which must be an existing git repository directory and must not look like
+    an option. The CLI deliberately exposes no --remote flag — an operator
+    pointing this check at a non-canonical repository is exactly the thing the
+    release-identity contract exists to prevent.
     """
+    if remote == CANONICAL_REMOTE:
+        return CANONICAL_REMOTE
     if not remote or remote.startswith("-"):
         msg = f"refusing remote {remote!r}: a remote must not begin with '-'"
         raise ValueError(msg)
-    return remote
+    candidate = Path(remote)
+    if not candidate.is_dir():
+        msg = f"refusing remote {remote!r}: not the canonical remote and not a local repository"
+        raise ValueError(msg)
+    return str(candidate.resolve(strict=True))
 
 
 def _resolve_remote(remote: str, ref: str) -> str | None:
@@ -309,10 +322,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="resolve the release tag and channel from the canonical remote; fails closed",
     )
-    parser.add_argument("--remote", default=CANONICAL_REMOTE)
     args = parser.parse_args(argv)
     ledger_path = args.ledger if args.ledger.is_absolute() else args.repo / args.ledger
-    errors, notes = validate(args.repo, ledger_path, verify_tag=args.verify_tag, remote=args.remote)
+    # No --remote flag: the canonical remote is the contract, not an option.
+    errors, notes = validate(args.repo, ledger_path, verify_tag=args.verify_tag)
     for note in notes:
         print(note)
     if errors:

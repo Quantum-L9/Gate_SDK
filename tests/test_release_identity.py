@@ -22,6 +22,17 @@ LEDGER = REPO / "contracts" / "RELEASE_IDENTITY_LEDGER.json"
 GIT = "/usr/bin/git"
 
 
+def _verify(repo: Path, ledger: Path, remote: str) -> tuple[list[str], list[str]]:
+    """Networked mode against a fixture remote, in-process.
+
+    The CLI exposes no --remote flag on purpose: the canonical remote is the
+    contract, and letting an operator point the check at another repository is
+    the thing the contract exists to prevent. Tests reach the parameter
+    directly instead, so no command-line argument ever reaches git.
+    """
+    return _load_validator().validate(repo, ledger, verify_tag=True, remote=remote)
+
+
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
@@ -224,17 +235,8 @@ def test_shallow_exception_is_not_accepted_in_required_networked_mode(tmp_path: 
         capture_output=True,
     )
 
-    completed = _run(
-        "--repo",
-        str(work),
-        "--ledger",
-        str(work / "contracts" / "RELEASE_IDENTITY_LEDGER.json"),
-        "--verify-tag",
-        "--remote",
-        str(origin),
-    )
-    assert completed.returncode != 0, completed.stdout
-    assert "unresolvable" in completed.stdout
+    errors, _ = _verify(work, work / "contracts" / "RELEASE_IDENTITY_LEDGER.json", str(origin))
+    assert any("unresolvable" in item for item in errors), errors
 
 
 # -------------------------------------------------------------- networked
@@ -243,17 +245,9 @@ def test_shallow_exception_is_not_accepted_in_required_networked_mode(tmp_path: 
 def test_verify_tag_passes_against_an_agreeing_remote(tmp_path: Path) -> None:
     origin = _seed_release_repo(tmp_path / "origin")
     consumer = _seed_release_repo(tmp_path / "consumer")
-    completed = _run(
-        "--repo",
-        str(consumer),
-        "--ledger",
-        str(consumer / "contracts" / "L.json"),
-        "--verify-tag",
-        "--remote",
-        str(origin),
-    )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "NETWORK: v1.1.0 == v1 ==" in completed.stdout
+    errors, notes = _verify(consumer, consumer / "contracts" / "L.json", str(origin))
+    assert errors == [], errors
+    assert any("NETWORK: v1.1.0 == v1 ==" in note for note in notes), notes
 
 
 def test_verify_tag_still_runs_the_structural_checks(tmp_path: Path) -> None:
@@ -263,35 +257,17 @@ def test_verify_tag_still_runs_the_structural_checks(tmp_path: Path) -> None:
     """
     origin = _seed_release_repo(tmp_path / "origin")
     consumer = _seed_release_repo(tmp_path / "consumer", tagged_version="1.0.0")
-    completed = _run(
-        "--repo",
-        str(consumer),
-        "--ledger",
-        str(consumer / "contracts" / "L.json"),
-        "--verify-tag",
-        "--remote",
-        str(origin),
-    )
-    assert completed.returncode != 0, completed.stdout
+    errors, notes = _verify(consumer, consumer / "contracts" / "L.json", str(origin))
     # The networked half agreed; the structural half is what caught it.
-    assert "NETWORK: v1.1.0 == v1 ==" in completed.stdout
-    assert "package_version at v1.1.0" in completed.stdout
+    assert any("NETWORK: v1.1.0 == v1 ==" in note for note in notes), notes
+    assert any("package_version at v1.1.0" in item for item in errors), errors
 
 
 def test_verify_tag_fails_when_the_remote_channel_has_moved(tmp_path: Path) -> None:
     origin = _seed_release_repo(tmp_path / "origin", channel_advances=True)
     consumer = _seed_release_repo(tmp_path / "consumer")
-    completed = _run(
-        "--repo",
-        str(consumer),
-        "--ledger",
-        str(consumer / "contracts" / "L.json"),
-        "--verify-tag",
-        "--remote",
-        str(origin),
-    )
-    assert completed.returncode != 0, completed.stdout
-    assert "compatibility channel" in completed.stdout
+    errors, _ = _verify(consumer, consumer / "contracts" / "L.json", str(origin))
+    assert any("compatibility channel" in item for item in errors), errors
 
 
 def test_verify_tag_refuses_a_remote_git_would_read_as_an_option(tmp_path: Path) -> None:
@@ -302,33 +278,19 @@ def test_verify_tag_refuses_a_remote_git_would_read_as_an_option(tmp_path: Path)
     <cmd>, so a --remote beginning with `-` is an execution vector by itself.
     """
     consumer = _seed_release_repo(tmp_path / "consumer")
-    completed = _run(
-        "--repo",
-        str(consumer),
-        "--ledger",
-        str(consumer / "contracts" / "L.json"),
-        "--verify-tag",
-        "--remote",
-        "--upload-pack=touch /tmp/pwned",
+    errors, _ = _verify(
+        consumer, consumer / "contracts" / "L.json", "--upload-pack=touch /tmp/pwned"
     )
-    assert completed.returncode != 0, completed.stdout
-    assert "must not begin with" in completed.stdout
+    assert any("must not begin with" in item for item in errors), errors
     assert not Path("/tmp/pwned").exists()
 
 
 def test_verify_tag_fails_closed_when_the_remote_cannot_be_resolved(tmp_path: Path) -> None:
     consumer = _seed_release_repo(tmp_path / "consumer")
-    completed = _run(
-        "--repo",
-        str(consumer),
-        "--ledger",
-        str(consumer / "contracts" / "L.json"),
-        "--verify-tag",
-        "--remote",
-        str(tmp_path / "does-not-exist"),
+    errors, _ = _verify(
+        consumer, consumer / "contracts" / "L.json", str(tmp_path / "does-not-exist")
     )
-    assert completed.returncode != 0, completed.stdout
-    assert "unresolvable" in completed.stdout
+    assert any("not a local repository" in item for item in errors), errors
 
 
 # ---------------------------------------------------------------- fixtures
