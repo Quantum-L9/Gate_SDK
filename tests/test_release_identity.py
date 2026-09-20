@@ -105,6 +105,7 @@ def test_channel_pointing_at_a_different_object_fails(tmp_path: Path) -> None:
         ({"consumer_pin": {"sha": "a" * 40}}, "retired consumer-sha policy"),
         ({"release_commit_sha": "b" * 40}, "retired consumer-sha policy"),
         ({"schema": "l9.gate_sdk.release_identity_ledger.v1"}, "schema must be"),
+        ({"release_tag_object": None}, "schema v1 field with no meaning"),
     ],
 )
 def test_reintroducing_consumer_sha_policy_fails(
@@ -253,6 +254,28 @@ def test_verify_tag_passes_against_an_agreeing_remote(tmp_path: Path) -> None:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "NETWORK: v1.1.0 == v1 ==" in completed.stdout
+
+
+def test_verify_tag_still_runs_the_structural_checks(tmp_path: Path) -> None:
+    """--verify-tag is additive. release.yml runs only this mode, so if the
+    networked check short-circuited the local ones, a release could ship with
+    a tagged tree whose version disagreed with the ledger and nothing would say so.
+    """
+    origin = _seed_release_repo(tmp_path / "origin")
+    consumer = _seed_release_repo(tmp_path / "consumer", tagged_version="1.0.0")
+    completed = _run(
+        "--repo",
+        str(consumer),
+        "--ledger",
+        str(consumer / "contracts" / "L.json"),
+        "--verify-tag",
+        "--remote",
+        str(origin),
+    )
+    assert completed.returncode != 0, completed.stdout
+    # The networked half agreed; the structural half is what caught it.
+    assert "NETWORK: v1.1.0 == v1 ==" in completed.stdout
+    assert "package_version at v1.1.0" in completed.stdout
 
 
 def test_verify_tag_fails_when_the_remote_channel_has_moved(tmp_path: Path) -> None:

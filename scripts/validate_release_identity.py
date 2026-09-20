@@ -37,8 +37,12 @@ CANONICAL_REMOTE = "https://github.com/Quantum-L9/Gate_SDK.git"
 SHA_RE = re.compile(r"\b[0-9a-f]{40}\b")
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
 
-# Keys whose presence means the retired v1 consumer-sha policy is back.
-RETIRED_KEYS = ("consumer_pin", "release_commit_sha", "release_tag_object")
+# Keys whose presence means the retired v1 consumer-sha policy is back. These
+# are kept apart from the merely-stale v1 fields below because an error message
+# that misnames the violation teaches the wrong correction.
+CONSUMER_SHA_KEYS = ("consumer_pin", "release_commit_sha")
+# v1 fields that carry no consumer policy but no longer have a v2 meaning.
+RETIRED_V1_KEYS = ("release_tag_object",)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -108,12 +112,16 @@ def check_ledger_policy(ledger: dict[str, object]) -> list[str]:
     if ledger.get("schema") != LEDGER_SCHEMA:
         errors.append(f"schema must be {LEDGER_SCHEMA}, got {ledger.get('schema')!r}")
 
-    for key in RETIRED_KEYS:
+    for key in CONSUMER_SHA_KEYS:
         if key in ledger:
             errors.append(
                 f"{key!r} is retired consumer-sha policy; the consumer contract is "
                 "the moving major channel"
             )
+
+    for key in RETIRED_V1_KEYS:
+        if key in ledger:
+            errors.append(f"{key!r} is a schema v1 field with no meaning under {LEDGER_SCHEMA}")
 
     contract = ledger.get("consumer_contract")
     if not isinstance(contract, dict):
@@ -202,19 +210,24 @@ def validate(
         errors.append(f"compatibility_channel must be {expected_channel!r}, got {channel!r}")
 
     if verify_tag:
-        release_sha = _resolve_remote(remote, expected_tag)
-        channel_sha = _resolve_remote(remote, expected_channel)
+        # Additive, not instead-of. --verify-tag used to return here, which
+        # meant release.yml — the one workflow that runs only this mode —
+        # never reached the "package version at the release tag" check below.
+        # The networked proof is extra evidence, never a replacement for the
+        # structural ones, and it matches how the consumer validators layer
+        # their two modes.
+        remote_release = _resolve_remote(remote, expected_tag)
+        remote_channel = _resolve_remote(remote, expected_channel)
         # Required networked mode fails closed: an unresolvable tag is not a
         # warning, it is the absence of the proof this mode exists to produce.
-        if release_sha is None:
+        if remote_release is None:
             errors.append(f"--verify-tag: {expected_tag} unresolvable at {remote}")
-        if channel_sha is None:
+        if remote_channel is None:
             errors.append(f"--verify-tag: {expected_channel} unresolvable at {remote}")
-        disagreement = check_channel_agreement(release_sha, channel_sha)
+        disagreement = check_channel_agreement(remote_release, remote_channel)
         errors.extend(disagreement)
-        if release_sha is not None and channel_sha is not None and not disagreement:
-            notes.append(f"NETWORK: {expected_tag} == {expected_channel} == {channel_sha}")
-        return errors, notes
+        if remote_release is not None and remote_channel is not None and not disagreement:
+            notes.append(f"NETWORK: {expected_tag} == {expected_channel} == {remote_channel}")
 
     release_sha = _resolve_local(repo, expected_tag)
     channel_sha = _resolve_local(repo, expected_channel)
