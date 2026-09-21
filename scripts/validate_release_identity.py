@@ -200,84 +200,78 @@ def check_channel_agreement(release_sha: str | None, channel_sha: str | None) ->
     return []
 
 
-def validate(
-    repo: Path,
-    ledger_path: Path,
-    *,
-    verify_tag: bool = False,
-    remote: str = CANONICAL_REMOTE,
-) -> tuple[list[str], list[str]]:
+def check_manifest_agreement(project: dict[str, object], ledger: dict[str, object]) -> list[str]:
+    """pyproject and the ledger must describe the same distribution at HEAD."""
     errors: list[str] = []
-    notes: list[str] = []
-    ledger = json.loads(ledger_path.read_text())
-    pyproject = tomllib.loads((repo / "pyproject.toml").read_text())
-    project = pyproject["project"]
-
-    errors.extend(check_ledger_policy(ledger))
-
     if project.get("name") != ledger.get("distribution_name"):
         errors.append(
             f"distribution_name mismatch: pyproject={project.get('name')} "
             f"ledger={ledger.get('distribution_name')}"
         )
-
-    package_version = ledger.get("package_version")
-    if project.get("version") != package_version:
+    if project.get("version") != ledger.get("package_version"):
         errors.append(
             f"package_version mismatch at HEAD tree: pyproject={project.get('version')} "
-            f"ledger={package_version}"
+            f"ledger={ledger.get('package_version')}"
         )
+    return errors
 
-    if not isinstance(package_version, str):
-        errors.append("package_version must be a string")
-        return errors, notes
 
-    try:
-        expected_tag, expected_channel = derive_expectations(package_version)
-    except ValueError as exc:
-        errors.append(str(exc))
-        return errors, notes
+def check_declared_refs(ledger: dict[str, object], expected_tag: str, channel: str) -> list[str]:
+    """The ledger's own refs must be the ones the package version derives."""
+    errors: list[str] = []
+    if ledger.get("release_tag") != expected_tag:
+        errors.append(f"release_tag must be {expected_tag!r}, got {ledger.get('release_tag')!r}")
+    if ledger.get("compatibility_channel") != channel:
+        errors.append(
+            f"compatibility_channel must be {channel!r}, "
+            f"got {ledger.get('compatibility_channel')!r}"
+        )
+    return errors
 
-    release_tag = ledger.get("release_tag")
-    channel = ledger.get("compatibility_channel")
-    if release_tag != expected_tag:
-        errors.append(f"release_tag must be {expected_tag!r}, got {release_tag!r}")
-    if channel != expected_channel:
-        errors.append(f"compatibility_channel must be {expected_channel!r}, got {channel!r}")
 
-    if verify_tag:
-        # Additive, not instead-of. --verify-tag used to return here, which
-        # meant release.yml — the one workflow that runs only this mode —
-        # never reached the "package version at the release tag" check below.
-        # The networked proof is extra evidence, never a replacement for the
-        # structural ones, and it matches how the consumer validators layer
-        # their two modes.
-        try:
-            remote_release = _resolve_remote(remote, expected_tag)
-            remote_channel = _resolve_remote(remote, expected_channel)
-        except ValueError as exc:
-            # Fails closed like any other unresolvable tag, but says which of
-            # the two reasons it was.
-            errors.append(f"--verify-tag: {exc}")
-            return errors, notes
-        # Required networked mode fails closed: an unresolvable tag is not a
-        # warning, it is the absence of the proof this mode exists to produce.
-        if remote_release is None:
-            errors.append(f"--verify-tag: {expected_tag} unresolvable at {remote}")
-        if remote_channel is None:
-            errors.append(f"--verify-tag: {expected_channel} unresolvable at {remote}")
-        disagreement = check_channel_agreement(remote_release, remote_channel)
-        errors.extend(disagreement)
-        if remote_release is not None and remote_channel is not None and not disagreement:
-            notes.append(f"NETWORK: {expected_tag} == {expected_channel} == {remote_channel}")
+def check_remote_identity(
+    remote: str, expected_tag: str, channel: str
+) -> tuple[list[str], list[str]]:
+    """Networked agreement between the release tag and the moving channel.
+
+    Fails closed: an unresolvable tag is not a warning, it is the absence of
+    the proof this mode exists to produce.
+
+    A refused remote propagates as ``ValueError`` rather than becoming an entry
+    in the returned list, because the two are different failures: an
+    unresolvable tag is a verdict about the release, a refused remote means no
+    check ran at all and the caller must stop.
+    """
+    remote_release = _resolve_remote(remote, expected_tag)
+    remote_channel = _resolve_remote(remote, channel)
+
+    errors: list[str] = []
+    if remote_release is None:
+        errors.append(f"--verify-tag: {expected_tag} unresolvable at {remote}")
+    if remote_channel is None:
+        errors.append(f"--verify-tag: {channel} unresolvable at {remote}")
+
+    disagreement = check_channel_agreement(remote_release, remote_channel)
+    errors.extend(disagreement)
+    if remote_release is not None and remote_channel is not None and not disagreement:
+        return errors, [f"NETWORK: {expected_tag} == {channel} == {remote_channel}"]
+    return errors, []
+
+
+def check_local_tag_objects(
+    repo: Path, expected_tag: str, channel: str, package_version: str
+) -> tuple[list[str], list[str]]:
+    """Resolve both refs in this clone and judge what they point at."""
+    errors: list[str] = []
+    notes: list[str] = []
 
     release_sha = _resolve_local(repo, expected_tag)
-    channel_sha = _resolve_local(repo, expected_channel)
+    channel_sha = _resolve_local(repo, channel)
 
     if release_sha is None or channel_sha is None:
         missing = [
             name
-            for name, sha in ((expected_tag, release_sha), (expected_channel, channel_sha))
+            for name, sha in ((expected_tag, release_sha), (channel, channel_sha))
             if sha is None
         ]
         if _is_shallow(repo):
@@ -305,6 +299,69 @@ def validate(
                 )
         except RuntimeError as exc:
             errors.append(f"unable to read pyproject at {expected_tag}: {exc}")
+
+    return errors, notes
+
+
+def validate(
+    repo: Path,
+    ledger_path: Path,
+    *,
+    verify_tag: bool = False,
+    remote: str = CANONICAL_REMOTE,
+) -> tuple[list[str], list[str]]:
+    """Run every release-identity check and return (errors, notes).
+
+    Each check is a named function above that owns one question. This stays an
+    orchestrator so the order — structural, then local, then networked — is
+    readable in one screen and a new check has an obvious place to go.
+    """
+    errors: list[str] = []
+    notes: list[str] = []
+    ledger = json.loads(ledger_path.read_text())
+    pyproject = tomllib.loads((repo / "pyproject.toml").read_text())
+    project = pyproject["project"]
+
+    errors.extend(check_ledger_policy(ledger))
+    errors.extend(check_manifest_agreement(project, ledger))
+
+    package_version = ledger.get("package_version")
+    if not isinstance(package_version, str):
+        errors.append("package_version must be a string")
+        return errors, notes
+
+    try:
+        expected_tag, expected_channel = derive_expectations(package_version)
+    except ValueError as exc:
+        errors.append(str(exc))
+        return errors, notes
+
+    errors.extend(check_declared_refs(ledger, expected_tag, expected_channel))
+
+    if verify_tag:
+        # Additive, not instead-of. --verify-tag used to return here, which
+        # meant release.yml — the one workflow that runs only this mode —
+        # never reached the local checks below. The networked proof is extra
+        # evidence, never a replacement for the structural ones, and it
+        # matches how the consumer validators layer their two modes.
+        try:
+            remote_errors, remote_notes = check_remote_identity(
+                remote, expected_tag, expected_channel
+            )
+        except ValueError as exc:
+            # A refused remote means no networked check ran; say which of the
+            # two reasons it was and stop rather than reporting local results
+            # as if the requested proof had been attempted.
+            errors.append(f"--verify-tag: {exc}")
+            return errors, notes
+        errors.extend(remote_errors)
+        notes.extend(remote_notes)
+
+    local_errors, local_notes = check_local_tag_objects(
+        repo, expected_tag, expected_channel, package_version
+    )
+    errors.extend(local_errors)
+    notes.extend(local_notes)
 
     return errors, notes
 

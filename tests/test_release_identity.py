@@ -88,7 +88,8 @@ def _load_validator():  # type: ignore[no-untyped-def]
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("validate_release_identity", SCRIPT)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None, f"{SCRIPT} produced no import spec"
+    assert spec.loader is not None, f"{SCRIPT} spec carries no loader"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
