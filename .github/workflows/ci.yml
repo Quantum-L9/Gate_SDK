@@ -209,6 +209,12 @@ jobs:
 # GATE 6 — Secret scan
 # TruffleHog --only-verified scans the full diff for verified hardcoded
 # credentials, API keys, private keys, and tokens.
+#
+# The action SHA pins only the wrapper; its `version` input defaults to
+# `latest`, so the engine that actually scans would float. The engine is
+# pinned here by tag AND digest (this env block is its single version
+# authority) and its runtime identity is proven before the scan.
+# Bump TRUFFLEHOG_VERSION / TRUFFLEHOG_DIGEST together with the action SHA.
 # ─────────────────────────────────────────────────────────────────────────────
   secret-scan:
     name: gate-6-secret-scan
@@ -216,15 +222,33 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 10
+    env:
+      TRUFFLEHOG_IMAGE: ghcr.io/trufflesecurity/trufflehog
+      TRUFFLEHOG_VERSION: "3.97.5"
+      TRUFFLEHOG_DIGEST: sha256:1cec88f18ca39e26e04e61fe9d886c9c4e5f2fc0ba4f2ed185cac0722bd8a076
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Prove TruffleHog engine identity
+        run: |
+          REF="${TRUFFLEHOG_IMAGE}:${TRUFFLEHOG_VERSION}@${TRUFFLEHOG_DIGEST}"
+          REPORTED=$(docker run --rm "${REF}" --version 2>&1 | tail -n 1)
+          echo "engine: ${REF}"
+          echo "reports: ${REPORTED}"
+          if [[ "${REPORTED}" != *"${TRUFFLEHOG_VERSION}"* ]]; then
+            echo "::error::TruffleHog engine reports '${REPORTED}', expected ${TRUFFLEHOG_VERSION}"
+            exit 1
+          fi
+
       - name: TruffleHog secret scan
         uses: trufflesecurity/trufflehog@f714bf454f350590f4a24c3ddb1aef02c35bf5b6 # v3.97.5
         with:
+          # The action runs "${image}:${version}"; tag@digest makes the
+          # engine content-addressed instead of `latest`.
+          version: ${{ env.TRUFFLEHOG_VERSION }}@${{ env.TRUFFLEHOG_DIGEST }}
           path: ./
           base: ${{ github.event_name == 'push' && github.event.before || github.event.repository.default_branch }}
           head: HEAD
