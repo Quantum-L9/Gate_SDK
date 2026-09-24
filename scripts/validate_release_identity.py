@@ -20,7 +20,17 @@ default        Structural checks plus local tag resolution. A genuinely shallow
                clone may skip object-level checks and says so.
 --verify-tag   Networked agreement. Resolves the release tag and the
                compatibility channel from the canonical remote and fails closed
-               when either cannot be resolved.
+               when either cannot be resolved. Steady-state proof: run it after
+               the channel has been promoted.
+--release-gate TAG
+               Pre-publish gate for the tag push that started a release. TAG
+               must be the ledger's release tag, it must resolve at the
+               canonical remote, and the checked-out HEAD must be exactly that
+               object — a later commit that kept the same version and ledger
+               is not the release. The channel may not agree yet: promotion
+               moves it after the gates, so it must be absent (first release of
+               a major), already on the release, or an ancestor of it. No
+               shallow-clone exception applies.
 """
 
 from __future__ import annotations
@@ -35,6 +45,7 @@ from pathlib import Path
 LEDGER_SCHEMA = "l9.gate_sdk.release_identity_ledger.v2"
 CANONICAL_REMOTE = "https://github.com/Quantum-L9/Gate_SDK.git"
 SHA_RE = re.compile(r"\b[0-9a-f]{40}\b")
+TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-rc\d+)?$")
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
 
 # Keys whose presence means the retired v1 consumer-sha policy is back. These
@@ -258,17 +269,74 @@ def check_remote_identity(
     return errors, []
 
 
+def check_head_binding(repo: Path, release_sha: str | None, expected_tag: str) -> list[str]:
+    """The revision being validated and built must be the release object itself.
+
+    Remote tag agreement and manifest agreement are both satisfied by a later
+    commit that kept the same version and ledger, so neither proves what is
+    about to be published. Only equality with the tag object does.
+    """
+    if release_sha is None:
+        return []  # the unresolvable tag is already reported by the caller
+    head = _resolve_local(repo, "HEAD")
+    if head is None:
+        return ["--release-gate: HEAD is unresolvable; nothing to bind to the release"]
+    if head != release_sha:
+        return [
+            f"--release-gate: HEAD {head} is not {expected_tag} ({release_sha}); "
+            "a release must build the tagged revision, not a later one"
+        ]
+    return []
+
+
+def check_channel_promotable(
+    repo: Path, release_sha: str | None, channel_sha: str | None, channel: str
+) -> list[str]:
+    """Before promotion the channel may lag the release, but only behind it.
+
+    Absent is the first release of a major. Equal is a re-run. Anything else
+    must be an ancestor, so promotion only ever moves consumers forward along
+    the history that was released.
+    """
+    if release_sha is None or channel_sha is None or release_sha == channel_sha:
+        return []
+    try:
+        _git(repo, "merge-base", "--is-ancestor", channel_sha, release_sha)
+    except RuntimeError:
+        return [
+            f"--release-gate: {channel} ({channel_sha}) is not an ancestor of the "
+            f"release ({release_sha}); promotion must move the channel forward"
+        ]
+    return []
+
+
 def check_local_tag_objects(
-    repo: Path, expected_tag: str, channel: str, package_version: str
+    repo: Path,
+    expected_tag: str,
+    channel: str,
+    package_version: str,
+    *,
+    release_gate: bool = False,
 ) -> tuple[list[str], list[str]]:
-    """Resolve both refs in this clone and judge what they point at."""
+    """Resolve both refs in this clone and judge what they point at.
+
+    Under ``release_gate`` the channel is judged by the networked promotion
+    check instead, and the release tag must be present: the shallow-clone
+    exception is for PR validation, never for a publish.
+    """
     errors: list[str] = []
     notes: list[str] = []
 
     release_sha = _resolve_local(repo, expected_tag)
     channel_sha = _resolve_local(repo, channel)
 
-    if release_sha is None or channel_sha is None:
+    if release_gate:
+        if release_sha is None:
+            errors.append(
+                f"--release-gate: {expected_tag} absent from this clone; "
+                "check out the tag with full history"
+            )
+    elif release_sha is None or channel_sha is None:
         missing = [
             name
             for name, sha in ((expected_tag, release_sha), (channel, channel_sha))
@@ -303,11 +371,33 @@ def check_local_tag_objects(
     return errors, notes
 
 
+def check_release_gate(
+    repo: Path, remote: str, requested_tag: str, expected_tag: str, channel: str
+) -> tuple[list[str], list[str]]:
+    """Pre-publish networked gate for the tag push that started a release."""
+    if requested_tag != expected_tag:
+        return [
+            f"--release-gate: requested tag {requested_tag!r} is not the ledger "
+            f"release tag {expected_tag!r}"
+        ], []
+    remote_release = _resolve_remote(remote, expected_tag)
+    remote_channel = _resolve_remote(remote, channel)
+    if remote_release is None:
+        return [f"--release-gate: {expected_tag} unresolvable at {remote}"], []
+    errors = check_head_binding(repo, remote_release, expected_tag)
+    errors.extend(check_channel_promotable(repo, remote_release, remote_channel, channel))
+    if errors:
+        return errors, []
+    state = "absent" if remote_channel is None else remote_channel
+    return [], [f"RELEASE-GATE: HEAD == {expected_tag} == {remote_release}; {channel} {state}"]
+
+
 def validate(
     repo: Path,
     ledger_path: Path,
     *,
     verify_tag: bool = False,
+    release_gate: str | None = None,
     remote: str = CANONICAL_REMOTE,
 ) -> tuple[list[str], list[str]]:
     """Run every release-identity check and return (errors, notes).
@@ -338,9 +428,24 @@ def validate(
 
     errors.extend(check_declared_refs(ledger, expected_tag, expected_channel))
 
+    if verify_tag and release_gate is not None:
+        errors.append("--verify-tag and --release-gate are separate modes; pick one")
+        return errors, notes
+
+    if release_gate is not None:
+        try:
+            gate_errors, gate_notes = check_release_gate(
+                repo, remote, release_gate, expected_tag, expected_channel
+            )
+        except ValueError as exc:
+            errors.append(f"--release-gate: {exc}")
+            return errors, notes
+        errors.extend(gate_errors)
+        notes.extend(gate_notes)
+
     if verify_tag:
         # Additive, not instead-of. --verify-tag used to return here, which
-        # meant release.yml — the one workflow that runs only this mode —
+        # meant the release workflow — which runs only networked modes —
         # never reached the local checks below. The networked proof is extra
         # evidence, never a replacement for the structural ones, and it
         # matches how the consumer validators layer their two modes.
@@ -358,7 +463,11 @@ def validate(
         notes.extend(remote_notes)
 
     local_errors, local_notes = check_local_tag_objects(
-        repo, expected_tag, expected_channel, package_version
+        repo,
+        expected_tag,
+        expected_channel,
+        package_version,
+        release_gate=release_gate is not None,
     )
     errors.extend(local_errors)
     notes.extend(local_notes)
@@ -374,15 +483,25 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=Path("contracts/RELEASE_IDENTITY_LEDGER.json"),
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--verify-tag",
         action="store_true",
         help="resolve the release tag and channel from the canonical remote; fails closed",
     )
+    mode.add_argument(
+        "--release-gate",
+        metavar="TAG",
+        help="pre-publish gate: TAG is the ledger release tag and HEAD is its object",
+    )
     args = parser.parse_args(argv)
+    if args.release_gate is not None and not TAG_RE.match(args.release_gate):
+        parser.error(f"--release-gate {args.release_gate!r} is not a vX.Y.Z release tag")
     ledger_path = args.ledger if args.ledger.is_absolute() else args.repo / args.ledger
     # No --remote flag: the canonical remote is the contract, not an option.
-    errors, notes = validate(args.repo, ledger_path, verify_tag=args.verify_tag)
+    errors, notes = validate(
+        args.repo, ledger_path, verify_tag=args.verify_tag, release_gate=args.release_gate
+    )
     for note in notes:
         print(note)
     if errors:
@@ -390,8 +509,11 @@ def main(argv: list[str] | None = None) -> int:
         for err in errors:
             print(f"- {err}")
         return 1
-    mode = "networked" if args.verify_tag else "local"
-    print(f"PASS: release identity agrees ({ledger_path}, {mode})")
+    if args.release_gate is not None:
+        label = "release-gate"
+    else:
+        label = "networked" if args.verify_tag else "local"
+    print(f"PASS: release identity agrees ({ledger_path}, {label})")
     return 0
 
 

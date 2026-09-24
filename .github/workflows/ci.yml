@@ -107,7 +107,7 @@ jobs:
       - name: Validate release identity (structural + local tags)
         # Gate_SDK owns what the moving major channel means for Gate, CEG and
         # EIE. Structural policy plus local tag agreement runs on every PR;
-        # the networked resolution is a release gate (release.yml).
+        # the networked release gate lives in release-publish.yml.
         run: python scripts/validate_release_identity.py
 
 # ─────────────────────────────────────────────────────────────────────────────

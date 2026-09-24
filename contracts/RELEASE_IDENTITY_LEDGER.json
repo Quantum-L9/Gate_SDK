@@ -15,6 +15,12 @@
   },
   "delivery_branch": "main",
   "delivery_policy": "PR_only_no_direct_merge",
+  "release_authority": {
+    "workflow": ".github/workflows/release-publish.yml",
+    "identity_gate": "verify-tag: validate_release_identity.py --release-gate <tag> (tag == ledger release_tag, HEAD == tag object)",
+    "channel_promotion": "promote-channel: moves compatibility_channel onto the release object after every gate, then --verify-tag",
+    "note": "The only workflow that publishes, releases, or moves the channel. A workflow_dispatch run is a rehearsal and has no path to any of the three."
+  },
   "github_release_url": "https://github.com/Quantum-L9/Gate_SDK/releases/tag/v1.1.0",
   "github_release_status": "created",
   "artifacts": {

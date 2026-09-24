@@ -252,7 +252,7 @@ def test_verify_tag_passes_against_an_agreeing_remote(tmp_path: Path) -> None:
 
 
 def test_verify_tag_still_runs_the_structural_checks(tmp_path: Path) -> None:
-    """--verify-tag is additive. release.yml runs only this mode, so if the
+    """--verify-tag is additive. The release workflow runs networked modes, so if the
     networked check short-circuited the local ones, a release could ship with
     a tagged tree whose version disagreed with the ledger and nothing would say so.
     """
@@ -292,6 +292,190 @@ def test_verify_tag_fails_closed_when_the_remote_cannot_be_resolved(tmp_path: Pa
         consumer, consumer / "contracts" / "L.json", str(tmp_path / "does-not-exist")
     )
     assert any("not a local repository" in item for item in errors), errors
+
+
+# ------------------------------------------------------- release authority
+
+WORKFLOWS = REPO / ".github" / "workflows"
+
+
+def _workflow(name: str) -> dict[str, object]:
+    import yaml
+
+    loaded = yaml.safe_load((WORKFLOWS / name).read_text())
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def _triggers(workflow: dict[str, object]) -> dict[str, object]:
+    # PyYAML reads the bare key `on` as boolean True.
+    raw = workflow.get("on", workflow.get(True))
+    assert isinstance(raw, dict)
+    return raw
+
+
+def test_release_publish_is_the_only_tag_triggered_workflow() -> None:
+    """One release authority: a second tag-triggered workflow is a second owner."""
+    tag_triggered = sorted(
+        path.name
+        for path in WORKFLOWS.glob("*.y*ml")
+        if "tags" in (_triggers(_workflow(path.name)).get("push") or {})
+    )
+    assert tag_triggered == ["release-publish.yml"]
+
+
+def test_release_publish_gates_identity_before_publication() -> None:
+    workflow = _workflow("release-publish.yml")
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    gate_steps = " ".join(str(step.get("run", "")) for step in jobs["verify-tag"]["steps"])
+    assert "validate_release_identity.py --release-gate" in gate_steps
+    # Publication and release creation only on a tag push, never on dispatch.
+    assert jobs["publish"]["if"] == "${{ github.event_name == 'push' }}"
+    assert "github.event_name == 'push'" in jobs["gh-release"]["if"]
+    assert "dry_run" not in json.dumps(_triggers(workflow))
+
+
+def test_channel_promotion_follows_every_gate_and_is_reproved() -> None:
+    jobs = _workflow("release-publish.yml")["jobs"]
+    assert isinstance(jobs, dict)
+    promote = jobs["promote-channel"]
+    assert "gh-release" in promote["needs"]
+    assert "github.event_name == 'push'" in promote["if"]
+    runs = [str(step.get("run", "")) for step in promote["steps"]]
+    gate = next(i for i, r in enumerate(runs) if "--release-gate" in r)
+    move = next(i for i, r in enumerate(runs) if "refs/tags/${CHANNEL}" in r)
+    proof = next(i for i, r in enumerate(runs) if "--verify-tag" in r)
+    assert gate < move < proof
+
+
+def test_ledger_names_the_release_authority() -> None:
+    ledger = json.loads(LEDGER.read_text())
+    assert ledger["release_authority"]["workflow"] == ".github/workflows/release-publish.yml"
+
+
+# ------------------------------------------------------------ release gate
+
+
+def _gate(repo: Path, remote: Path, tag: str = "v1.1.0") -> tuple[list[str], list[str]]:
+    """Pre-publish release gate against a fixture remote, in-process."""
+    return _load_validator().validate(
+        repo, repo / "contracts" / "L.json", release_gate=tag, remote=str(remote)
+    )
+
+
+def _clone(origin: Path, dest: Path) -> Path:
+    subprocess.run(
+        [GIT, "clone", "-q", "--no-local", str(origin), str(dest)],
+        check=True,
+        capture_output=True,
+    )
+    return dest
+
+
+def test_release_gate_passes_when_head_is_the_release_object(tmp_path: Path) -> None:
+    origin = _seed_release_repo(tmp_path / "origin")
+    work = _clone(origin, tmp_path / "work")
+    errors, notes = _gate(work, origin)
+    assert errors == [], errors
+    assert any(note.startswith("RELEASE-GATE: HEAD == v1.1.0 ==") for note in notes), notes
+
+
+def test_release_gate_fails_when_head_is_one_commit_past_the_tag(tmp_path: Path) -> None:
+    """F-004 discriminator.
+
+    A later commit that kept version 1.1.0 and the same ledger satisfies both
+    remote tag agreement and manifest agreement. It is still not the release,
+    so building it under the release's name must fail.
+    """
+    origin = _seed_release_repo(tmp_path / "origin")
+    work = _clone(origin, tmp_path / "work")
+    (work / "later.txt").write_text("same version, same ledger, different bytes\n")
+    _git(work, "add", "later.txt")
+    _git(work, "commit", "-qm", "commit after the release tag")
+
+    # The steady-state networked check cannot tell the difference...
+    verify_errors, _ = _verify(work, work / "contracts" / "L.json", str(origin))
+    assert verify_errors == [], verify_errors
+    # ...the release gate can.
+    errors, _ = _gate(work, origin)
+    assert any("is not v1.1.0" in item for item in errors), errors
+
+
+def test_release_gate_requires_the_requested_tag_to_be_the_ledger_tag(tmp_path: Path) -> None:
+    origin = _seed_release_repo(tmp_path / "origin")
+    work = _clone(origin, tmp_path / "work")
+    errors, _ = _gate(work, origin, tag="v1.2.0")
+    assert any("is not the ledger release tag" in item for item in errors), errors
+
+
+def test_release_gate_accepts_a_first_release_with_no_channel_yet(tmp_path: Path) -> None:
+    origin = _seed_release_repo(tmp_path / "origin")
+    _git(origin, "tag", "-d", "v1")
+    work = _clone(origin, tmp_path / "work")
+    errors, notes = _gate(work, origin)
+    assert errors == [], errors
+    assert any(note.endswith("v1 absent") for note in notes), notes
+
+
+def test_release_gate_accepts_a_channel_still_on_the_previous_release(tmp_path: Path) -> None:
+    """Promotion happens after the gates, so the channel legitimately lags."""
+    origin = _seed_release_repo(tmp_path / "origin")
+    _git(origin, "commit", "-q", "--allow-empty", "-m", "the new release")
+    _git(origin, "tag", "-f", "v1.1.0")
+    work = _clone(origin, tmp_path / "work")
+    errors, _ = _gate(work, origin)
+    assert errors == [], errors
+
+
+def test_release_gate_refuses_a_channel_off_the_release_history(tmp_path: Path) -> None:
+    origin = _seed_release_repo(tmp_path / "origin")
+    # A root commit with no parent: history the release never descended from.
+    empty_tree = subprocess.run(
+        [GIT, "hash-object", "-t", "tree", "/dev/null"],
+        cwd=origin,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    unrelated = subprocess.run(
+        [GIT, "commit-tree", empty_tree, "-m", "unrelated history"],
+        cwd=origin,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    _git(origin, "tag", "-f", "v1", unrelated)
+    work = _clone(origin, tmp_path / "work")
+    errors, _ = _gate(work, origin)
+    assert any("is not an ancestor of the release" in item for item in errors), errors
+
+
+def test_release_gate_has_no_shallow_clone_exception(tmp_path: Path) -> None:
+    origin = _seed_release_repo(tmp_path / "origin")
+    (origin / "later.txt").write_text("depth\n")
+    _git(origin, "add", "later.txt")
+    _git(origin, "commit", "-qm", "second")
+    work = tmp_path / "shallow"
+    subprocess.run(
+        [GIT, "clone", "-q", "--no-local", "--depth", "1", "--no-tags", str(origin), str(work)],
+        check=True,
+        capture_output=True,
+    )
+    errors, _ = _gate(work, origin)
+    assert any("absent from this clone" in item for item in errors), errors
+
+
+def test_release_gate_cli_rejects_a_malformed_tag() -> None:
+    completed = _run("--repo", str(REPO), "--release-gate", "main")
+    assert completed.returncode == 2
+    assert "is not a vX.Y.Z release tag" in completed.stderr
+
+
+def test_release_gate_and_verify_tag_are_exclusive_modes() -> None:
+    completed = _run("--repo", str(REPO), "--verify-tag", "--release-gate", "v1.1.0")
+    assert completed.returncode == 2
+    assert "not allowed with" in completed.stderr
 
 
 # ---------------------------------------------------------------- fixtures
