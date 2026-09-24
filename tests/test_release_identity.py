@@ -370,6 +370,14 @@ def _clone(origin: Path, dest: Path) -> Path:
         check=True,
         capture_output=True,
     )
+    # `_seed_release_repo` sets the identity as *repo-local* config, which a
+    # fresh clone does not inherit. Any test that commits in the clone then
+    # depends on a global identity existing, which is true on a developer
+    # machine and false on a bare CI runner -- where `git commit` exits 128
+    # with "Author identity unknown". Set it here so the fixture carries its
+    # own identity wherever it runs.
+    _git(dest, "config", "user.email", "ci@example.com")
+    _git(dest, "config", "user.name", "ci")
     return dest
 
 
