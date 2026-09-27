@@ -437,4 +437,3 @@ these, that is an SDK capability gap (§2.6): fix it here.
 The SDK owns the ceremony; Gate owns the decision. Nothing in the SDK grants a
 key, a scope, or a registration — Gate verifies identity, scopes actions and
 accepts registrations.
-
