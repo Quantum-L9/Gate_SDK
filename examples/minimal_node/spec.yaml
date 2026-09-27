@@ -1,0 +1,8 @@
+# Registration identity for the minimal node (GATE_NODE_SPEC_PATH).
+node:
+  id: sdk-minimal-node
+  actions:
+    - sdk-echo
+  internal_url: http://sdk-minimal-node:8000
+  owner: sdk-minimal-node
+  type: worker

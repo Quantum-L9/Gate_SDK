@@ -8,6 +8,25 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Participation closure (L9-PARTICIPATION-01): a node or consumer joins L9 with
+the SDK and its security configuration alone. Harvested from the machinery
+EIE, CEG and IB-Odoo_19 each wrote for themselves, and proven on CEG's
+cross-repo Docker rail. Requires Constellation.Gate with `POST /v1/admission`
+for `activate()`.
+
+### Added
+- **runtime/participation.py** — `NodeParticipation`, `ParticipationState`, `ParticipationStatus`. Registers at startup, re-registers every `GATE_REREGISTRATION_INTERVAL_SECONDS` (default 300, 0 disables) so a node recovers after Gate restarts and forgets it, and reports `disabled`/`not_attempted`/`registering`/`active`/`degraded`. Never raises into the node.
+- **`GET /v1/ready`** on `create_node_app()` — 200 only while Gate has accepted the node (or participation is disabled), 503 otherwise.
+- **`create_node_app(registration=...)`** and **`register_from_env(registration)`** — an in-process `NodeRegistration` instead of a spec file.
+- **`GateClient.activate(required_actions=...)`** / **`activate_consumer(config, ...)`** — signed admission probe (`gate.admission`) to `POST /v1/admission`; returns Gate's signed answer as a typed `ConsumerAccessReceipt` (key id, scope, granted actions). `GateClientConfig.admission_problems()` reports an unprovable identity as configuration before any request.
+- **`GateAuthorizationError`** (401/403), **`GateHTTPError.code`** (Gate's error code, e.g. `action_not_permitted`), and **`GateClientError.retryable`** on every client error.
+- **`get_gate_client_config_from_env(**overrides)`** — explicit values win over the environment.
+- **examples/minimal_node/** — a node with zero Gate integration code (the L9-PARTICIPATION-01 acid test).
+
+### Changed
+- With `auto_register_with_gate=True` (the default) and a Gate URL, readiness now follows registration: the node is not ready until Gate accepts it, and becomes not ready again if a re-registration fails. `GET /v1/health` stays 200 (liveness) and adds `gate_participation`. `auto_register_with_gate=False` is unchanged apart from reporting `disabled`.
+- `register_from_env()` honours `GATE_REGISTRATION_ENABLED=false` before requiring `GATE_URL`.
+
 ---
 
 ## [1.1.0] — 2026-09-02

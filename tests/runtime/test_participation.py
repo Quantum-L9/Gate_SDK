@@ -332,3 +332,40 @@ def test_node_app_stops_the_loop_on_shutdown(monkeypatch: pytest.MonkeyPatch) ->
         assert app.state.participation.running is True
 
     assert app.state.participation.running is False
+
+
+def test_minimal_example_node_needs_no_gate_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    """examples/minimal_node: handlers + spec + create_node_app() becomes an active node."""
+    import importlib
+    import sys
+    from pathlib import Path
+
+    from constellation_node_sdk.runtime.config import get_runtime_config
+    from constellation_node_sdk.runtime.handlers import clear_handlers
+
+    repo = Path(__file__).resolve().parents[2]
+    monkeypatch.syspath_prepend(str(repo))
+    monkeypatch.setenv("GATE_URL", GATE)
+    monkeypatch.setenv("GATE_NODE_SPEC_PATH", str(repo / "examples/minimal_node/spec.yaml"))
+    monkeypatch.setenv("GATE_REREGISTRATION_INTERVAL_SECONDS", "0")
+    monkeypatch.setenv("L9_NODE_NAME", "sdk-minimal-node")
+    monkeypatch.setenv("L9_ENVIRONMENT", "test")
+    monkeypatch.setenv("L9_DEV_MODE", "true")
+    fake = _ScriptedRegister(True)
+    monkeypatch.setattr(participation_module, "register_node", fake)
+    get_runtime_config.cache_clear()
+    for name in [m for m in sys.modules if m.startswith("examples.minimal_node")]:
+        monkeypatch.delitem(sys.modules, name)
+    clear_handlers()
+    try:
+        app = importlib.import_module("examples.minimal_node.app").app
+        with TestClient(app) as client:
+            ready = client.get("/v1/ready")
+    finally:
+        get_runtime_config.cache_clear()
+        clear_handlers()
+
+    assert ready.status_code == 200
+    registration = fake.calls[0]["registration"]
+    assert registration.node_name == "sdk-minimal-node"
+    assert registration.supported_actions == ("sdk-echo",)
