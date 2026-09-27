@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
-from constellation_node_sdk.gate.registration import register_from_env
+from constellation_node_sdk.gate.registration import NodeRegistration
 from constellation_node_sdk.transport.packet import TransportPacket
 
 from .config import NodeRuntimeConfig, get_runtime_config
@@ -29,6 +29,7 @@ from .observability import (
     record_execution,
     set_readiness,
 )
+from .participation import NodeParticipation, ParticipationStatus
 from .preflight import run_preflight
 
 
@@ -222,50 +223,104 @@ def create_node_app(
     lifecycle_hook: LifecycleHook | None = None,
     config: NodeRuntimeConfig | None = None,
     auto_register_with_gate: bool = True,
+    registration: NodeRegistration | None = None,
 ) -> FastAPI:
+    """
+    Build the canonical node runtime.
+
+    With ``auto_register_with_gate`` (the default) and a Gate URL, the app owns
+    the node's Gate participation (:class:`NodeParticipation`): it registers at
+    startup, re-registers every ``GATE_REREGISTRATION_INTERVAL_SECONDS`` so the
+    node recovers after Gate forgets it, and binds readiness to the outcome —
+    ``GET /v1/ready`` answers 503 while Gate has not accepted the node.
+    ``registration`` supplies the node identity in process; without it the
+    ``GATE_NODE_SPEC_PATH`` spec file is used. ``GET /v1/health`` stays a
+    liveness probe (always 200) and reports the participation status.
+
+    ``auto_register_with_gate=False`` leaves registration to the caller and
+    reports participation as ``disabled``.
+    """
     resolved_config = config or get_runtime_config()
     resolved_service_name = service_name or resolved_config.service_name
     resolved_version = version or resolved_config.service_version
     resolved_lifecycle = lifecycle_hook or NoOpLifecycle()
+
+    def _apply_readiness(app: FastAPI) -> None:
+        participation: NodeParticipation = app.state.participation
+        ready = bool(app.state.lifecycle_started) and participation.ready
+        app.state.runtime_ready = ready
+        set_readiness(config=resolved_config, ready=ready)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         configure_logging(resolved_config)
         run_preflight(resolved_config)
 
-        app.state.runtime_ready = False
-        set_readiness(config=resolved_config, ready=False)
+        app.state.lifecycle_started = False
+        _apply_readiness(app)
 
         await resolved_lifecycle.startup()
+        app.state.lifecycle_started = True
 
-        if auto_register_with_gate and resolved_config.gate_url:
-            await register_from_env()
+        participation: NodeParticipation = app.state.participation
+        await participation.start()
+        _apply_readiness(app)
 
-        app.state.runtime_ready = True
-        set_readiness(config=resolved_config, ready=True)
-
-        yield
-
-        app.state.runtime_ready = False
-        set_readiness(config=resolved_config, ready=False)
-        await resolved_lifecycle.shutdown()
+        try:
+            yield
+        finally:
+            app.state.lifecycle_started = False
+            _apply_readiness(app)
+            await participation.stop()
+            await resolved_lifecycle.shutdown()
 
     app = FastAPI(
         title=resolved_service_name,
         version=resolved_version,
         lifespan=lifespan,
     )
+
+    def _on_participation_change(_status: ParticipationStatus) -> None:
+        _apply_readiness(app)
+
+    if auto_register_with_gate and resolved_config.gate_url:
+        app.state.participation = NodeParticipation.from_env(
+            gate_url=resolved_config.gate_url,
+            registration=registration,
+            on_change=_on_participation_change,
+        )
+    else:
+        app.state.participation = NodeParticipation(gate_url=None, enabled=False)
+    app.state.lifecycle_started = False
     app.state.runtime_ready = False
+
+    def _participation_view() -> dict[str, Any]:
+        participation: NodeParticipation = app.state.participation
+        return participation.status.model_dump(mode="json")
 
     @app.get("/v1/health")
     async def health() -> dict[str, Any]:
+        ready = bool(getattr(app.state, "runtime_ready", False))
         return {
-            "status": "healthy" if bool(getattr(app.state, "runtime_ready", False)) else "starting",
+            "status": "healthy" if ready else "starting",
             "service_name": resolved_config.service_name,
             "service_version": resolved_config.service_version,
             "node_name": resolved_config.node_name,
-            "ready": bool(getattr(app.state, "runtime_ready", False)),
+            "ready": ready,
+            "gate_participation": _participation_view(),
         }
+
+    @app.get("/v1/ready")
+    async def ready_probe() -> JSONResponse:
+        ready = bool(getattr(app.state, "runtime_ready", False))
+        return JSONResponse(
+            status_code=200 if ready else 503,
+            content={
+                "ready": ready,
+                "node_name": resolved_config.node_name,
+                "gate_participation": _participation_view(),
+            },
+        )
 
     @app.get("/metrics")
     async def metrics() -> Response:
