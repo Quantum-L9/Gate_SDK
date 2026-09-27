@@ -25,9 +25,17 @@ from constellation_node_sdk.runtime.inbound_policy import (
     validate_relay_ingress_packet,
 )
 from constellation_node_sdk.runtime.lifecycle import LifecycleHook, NoOpLifecycle
+from constellation_node_sdk.runtime.participation import (
+    NodeParticipation,
+    ParticipationState,
+    ParticipationStatus,
+)
 from constellation_node_sdk.runtime.preflight import PreflightFailure, run_preflight
 
 __all__ = [
+    "NodeParticipation",
+    "ParticipationState",
+    "ParticipationStatus",
     "LifecycleHook",
     "NoOpLifecycle",
     "NodeRuntimeConfig",

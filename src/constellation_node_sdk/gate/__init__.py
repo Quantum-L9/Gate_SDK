@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from constellation_node_sdk.gate.admission import ADMISSION_ACTION, ConsumerAccessReceipt
 from constellation_node_sdk.gate.capabilities import (
     CapabilityDescriptor,
     CapabilityListResponse,
 )
 from constellation_node_sdk.gate.capability_client import GateCapabilityClient
-from constellation_node_sdk.gate.client import GateClient
+from constellation_node_sdk.gate.client import GateClient, activate_consumer
 from constellation_node_sdk.gate.config import (
     GateClientConfig,
     GateRegistrationConfig,
@@ -13,6 +14,7 @@ from constellation_node_sdk.gate.config import (
     get_gate_registration_config_from_env,
 )
 from constellation_node_sdk.gate.errors import (
+    GateAuthorizationError,
     GateClientError,
     GateConfigurationError,
     GateConnectionError,
@@ -40,8 +42,11 @@ from constellation_node_sdk.gate.registration import (
 )
 
 __all__ = [
+    "ADMISSION_ACTION",
     "CapabilityDescriptor",
     "CapabilityListResponse",
+    "ConsumerAccessReceipt",
+    "GateAuthorizationError",
     "GateCapabilityClient",
     "GateClient",
     "GateClientConfig",
@@ -56,6 +61,7 @@ __all__ = [
     "GateSecurityError",
     "GateTimeoutError",
     "NodeRegistration",
+    "activate_consumer",
     "assert_gate_only_destination",
     "assert_local_node_identity",
     "assert_node_origin_packet",

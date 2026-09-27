@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -109,6 +110,29 @@ class GateClientConfig(BaseModel):
             normalized[normalized_key] = normalized_value
         return normalized
 
+    def admission_problems(self) -> list[str]:
+        """
+        Why this configuration cannot prove an identity to Gate (empty when it can).
+
+        Gate verifies a consumer by the signing key id on its packets, so an
+        unsigned or half-configured client can never be admitted. Checked before
+        any network call so the mistake is reported as configuration, not as a
+        Gate rejection.
+        """
+        problems: list[str] = []
+        if self.signing_key is None:
+            problems.append("no signing key (L9_SIGNING_KEY) is configured")
+        if self.signing_key is not None and self.signing_key_id is None:
+            problems.append("a signing key is configured without a key id (L9_SIGNING_KEY_ID)")
+        if self.signing_key is not None and self.signing_algorithm is None:
+            problems.append("a signing key is configured without an algorithm")
+        if self.verify_response_signatures and not self.verifying_keys:
+            problems.append(
+                "response signatures are verified but no verifying keys "
+                "(L9_VERIFYING_KEYS_JSON) are configured"
+            )
+        return problems
+
     def resolve_verifying_key(self, key_id: str | None) -> str | bytes | None:
         if key_id is None:
             return None
@@ -154,8 +178,19 @@ class GateRegistrationConfig(BaseModel):
         return normalized
 
 
-def get_gate_client_config_from_env() -> GateClientConfig:
-    gate_url = os.getenv("GATE_URL", "").strip()
+def get_gate_client_config_from_env(**overrides: Any) -> GateClientConfig:
+    """
+    Build a :class:`GateClientConfig` from the environment.
+
+    Keyword ``overrides`` (any ``GateClientConfig`` field) win over the
+    environment, so an application whose settings come from elsewhere never has
+    to write to ``os.environ`` to build a client. ``GATE_URL`` is only required
+    when ``gate_url`` is not overridden.
+    """
+    unknown = set(overrides) - set(GateClientConfig.model_fields)
+    if unknown:
+        raise ValueError(f"unknown GateClientConfig fields: {', '.join(sorted(unknown))}")
+    gate_url = overrides.get("gate_url") or os.getenv("GATE_URL", "").strip()
     if not gate_url:
         raise ValueError("GATE_URL is required")
 
@@ -165,26 +200,28 @@ def get_gate_client_config_from_env() -> GateClientConfig:
     signing_algorithm = os.getenv("L9_SIGNING_ALGORITHM")
     verify_response_signatures = _env_bool("L9_REQUIRE_SIGNATURE", False)
 
-    return GateClientConfig(
-        gate_url=gate_url,
-        local_node=local_node,
-        timeout_seconds=float(os.getenv("GATE_CLIENT_TIMEOUT_SECONDS", "30.0")),
-        require_signature=_env_bool("L9_REQUIRE_SIGNATURE", False),
-        signing_key=signing_key,
-        signing_key_id=signing_key_id,
-        signing_algorithm=signing_algorithm,
-        verify_response_signatures=verify_response_signatures,
+    values: dict[str, Any] = {
+        "gate_url": gate_url,
+        "local_node": local_node,
+        "timeout_seconds": float(os.getenv("GATE_CLIENT_TIMEOUT_SECONDS", "30.0")),
+        "require_signature": _env_bool("L9_REQUIRE_SIGNATURE", False),
+        "signing_key": signing_key,
+        "signing_key_id": signing_key_id,
+        "signing_algorithm": signing_algorithm,
+        "verify_response_signatures": verify_response_signatures,
         # Gate signs the responses it authors with *its* key id, so a node that
         # requires signatures must be able to resolve that id. The same
         # L9_VERIFYING_KEYS_JSON the worker runtime reads applies here; an
         # empty map used to make every env-configured node reject every signed
         # Gate response with "no verifying key available".
-        verifying_keys=_env_verifying_keys("L9_VERIFYING_KEYS_JSON"),
-        verify_hop_signatures=_env_bool("L9_VERIFY_HOP_SIGNATURES", False),
-        allowed_gate_destination=os.getenv("GATE_ALLOWED_DESTINATION", "gate"),
-        max_timeout_ms=_env_optional_int("GATE_CLIENT_MAX_TIMEOUT_MS"),
-        transport_margin_ms=int(os.getenv("GATE_CLIENT_TRANSPORT_MARGIN_MS", "0")),
-    )
+        "verifying_keys": _env_verifying_keys("L9_VERIFYING_KEYS_JSON"),
+        "verify_hop_signatures": _env_bool("L9_VERIFY_HOP_SIGNATURES", False),
+        "allowed_gate_destination": os.getenv("GATE_ALLOWED_DESTINATION", "gate"),
+        "max_timeout_ms": _env_optional_int("GATE_CLIENT_MAX_TIMEOUT_MS"),
+        "transport_margin_ms": int(os.getenv("GATE_CLIENT_TRANSPORT_MARGIN_MS", "0")),
+    }
+    values.update(overrides)
+    return GateClientConfig(**values)
 
 
 def get_gate_registration_config_from_env() -> GateRegistrationConfig:
