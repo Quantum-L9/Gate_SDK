@@ -288,6 +288,7 @@ def create_node_app(
             gate_url=resolved_config.gate_url,
             registration=registration,
             on_change=_on_participation_change,
+            expected_node_name=resolved_config.node_name,
         )
     else:
         app.state.participation = NodeParticipation(gate_url=None, enabled=False)

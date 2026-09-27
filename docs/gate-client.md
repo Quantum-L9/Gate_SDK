@@ -168,8 +168,11 @@ It sends one signed probe (reserved action `gate.admission`) to
 `POST /v1/admission`, verifies Gate's signed answer, and returns a typed
 `ConsumerAccessReceipt`. A required action Gate did not grant raises
 `GateAuthorizationError(code="action_not_permitted")`; an identity that cannot
-be proven (no signing key, key without id, verification without verifying keys)
-raises `GateConfigurationError` before any request. Gate decides; the SDK only
+be proven (no signing key, key without id) or a receipt that cannot be
+authenticated (no verifying keys) raises `GateConfigurationError` before any
+request. The receipt is always signature-verified — even when
+`verify_response_signatures` is off for execute — and must be signed by a key in
+`verifying_keys` other than the consumer's own. Gate decides; the SDK only
 asks. `activate_consumer(config, required_actions=...)` is the one-call form.
 
 `get_gate_client_config_from_env(**overrides)` builds the config from the

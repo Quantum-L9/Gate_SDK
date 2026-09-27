@@ -369,3 +369,23 @@ def test_minimal_example_node_needs_no_gate_code(monkeypatch: pytest.MonkeyPatch
     registration = fake.calls[0]["registration"]
     assert registration.node_name == "sdk-minimal-node"
     assert registration.supported_actions == ("sdk-echo",)
+
+
+def test_registration_under_another_name_is_degraded_not_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gate would route the registered name to a node whose runtime rejects it."""
+    monkeypatch.setenv("GATE_REREGISTRATION_INTERVAL_SECONDS", "0")
+    monkeypatch.setenv("GATE_REGISTRATION_ENABLED", "true")
+    fake = _ScriptedRegister(True)
+    monkeypatch.setattr(participation_module, "register_node", fake)
+    app = create_node_app(config=_config(GATE), registration=_registration("not-score"))
+
+    with TestClient(app) as client:
+        ready = client.get("/v1/ready")
+
+    assert ready.status_code == 503
+    participation = ready.json()["gate_participation"]
+    assert participation["state"] == "degraded"
+    assert "does not match the runtime node_name" in participation["last_error"]
+    assert fake.calls == []

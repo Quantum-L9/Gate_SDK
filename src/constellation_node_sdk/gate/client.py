@@ -501,7 +501,25 @@ class GateClient:
             retention_days=1,
             priority=2,
         )
-        response = await self._exchange(packet, path=ADMISSION_PATH, context="Gate admission")
+        # The receipt is authoritative only if Gate signed it: verify it even when
+        # this client does not verify execute responses, and only accept a key
+        # from the configured verifying keyring — never this client's own key.
+        verifying = GateClient(
+            self._config.model_copy(update={"verify_response_signatures": True}),
+            transport=self._transport,
+        )
+        response = await verifying._exchange(packet, path=ADMISSION_PATH, context="Gate admission")
+        signer = response.security.signing_key_id
+        if (
+            response.security.signature is None
+            or signer is None
+            or signer not in self._config.verifying_keys
+            or signer == self._config.signing_key_id
+        ):
+            raise GateSecurityError(
+                f"Gate admission receipt is not signed by a trusted Gate key (signer={signer!r})",
+                direction="inbound",
+            )
         receipt = parse_admission_payload(dict(response.payload), required_actions=required)
         if receipt.missing_actions:
             missing = ", ".join(receipt.missing_actions)

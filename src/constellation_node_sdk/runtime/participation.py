@@ -105,6 +105,7 @@ class NodeParticipation:
         enabled: bool = True,
         reregistration_interval_seconds: float = DEFAULT_REREGISTRATION_INTERVAL_SECONDS,
         on_change: Callable[[ParticipationStatus], None] | None = None,
+        expected_node_name: str | None = None,
     ) -> None:
         if retries < 1:
             raise ValueError("retries must be >= 1")
@@ -121,6 +122,9 @@ class NodeParticipation:
         self._overwrite = overwrite
         self._interval = float(reregistration_interval_seconds)
         self._on_change = on_change
+        self._expected_node_name = (
+            expected_node_name.strip().lower() if expected_node_name else None
+        )
         self._task: asyncio.Task[None] | None = None
         self._status = ParticipationStatus(
             state=(
@@ -139,6 +143,7 @@ class NodeParticipation:
         gate_url: str | None = None,
         registration: NodeRegistration | None = None,
         on_change: Callable[[ParticipationStatus], None] | None = None,
+        expected_node_name: str | None = None,
     ) -> NodeParticipation:
         """
         Build from the ``GATE_*`` registration environment.
@@ -147,7 +152,9 @@ class NodeParticipation:
         resolved URL). ``registration`` overrides the ``GATE_NODE_SPEC_PATH``
         spec file for nodes whose identity comes from application settings.
         ``GATE_REGISTRATION_ENABLED=false`` yields a ``disabled`` participation
-        without requiring ``GATE_URL``.
+        without requiring ``GATE_URL``. ``expected_node_name`` is the runtime's
+        own node name: a registration under any other name is refused locally,
+        because Gate would route that name to a node that rejects the packets.
         """
         enabled = _env_bool("GATE_REGISTRATION_ENABLED", True)
         resolved_url = gate_url if gate_url is not None else os.getenv("GATE_URL", "")
@@ -170,6 +177,7 @@ class NodeParticipation:
                 )
             ),
             on_change=on_change,
+            expected_node_name=expected_node_name,
         )
 
     @property
@@ -211,6 +219,12 @@ class NodeParticipation:
         try:
             registration = self._resolve_registration()
             node_name = registration.node_name
+            if self._expected_node_name and node_name != self._expected_node_name:
+                raise ValueError(
+                    f"registration node_name {node_name!r} does not match the runtime "
+                    f"node_name {self._expected_node_name!r}; Gate would route it to a "
+                    "node that rejects the packets"
+                )
             accepted = await register_node(
                 gate_url=self._gate_url,
                 registration=registration,

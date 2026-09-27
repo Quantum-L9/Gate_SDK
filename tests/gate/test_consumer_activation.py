@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 import pytest
+from gate_client_helpers import RecordingTransport, gate_response_for, make_client_config
 
 from constellation_node_sdk import (
     ADMISSION_ACTION,
@@ -32,7 +33,6 @@ from constellation_node_sdk import (
 )
 from constellation_node_sdk.gate.errors import GateClientError, gate_http_error
 from constellation_node_sdk.transport.packet import TransportPacket
-from tests.gate_client_helpers import RecordingTransport, gate_response_for, make_client_config
 
 ODOO_KEY = "odoo-secret-0123456789"
 GATE_KEY = "gate-secret-0123456789"
@@ -261,4 +261,46 @@ def test_client_config_still_requires_a_gate_url(monkeypatch: pytest.MonkeyPatch
     monkeypatch.delenv("GATE_URL", raising=False)
 
     with pytest.raises(ValueError, match="GATE_URL is required"):
+        get_gate_client_config_from_env()
+
+
+# ── review regressions (#55) ────────────────────────────────────────────────
+
+
+def _unsigned_gate(payload: dict[str, Any]) -> Any:
+    def respond(request: httpx.Request, _attempt: int) -> httpx.Response:
+        sent = TransportPacket.model_validate(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(200, json=gate_response_for(sent, payload).model_dump_json_dict())
+
+    return respond
+
+
+async def test_activation_authenticates_the_receipt_even_without_response_verification() -> None:
+    """An unsigned, hash-consistent receipt must never be trusted as Gate's grant."""
+    transport = RecordingTransport(_unsigned_gate(_receipt_payload()))
+    client = GateClient(_signed_config(verify_response_signatures=False), transport=transport)
+
+    with pytest.raises(GateSecurityError):
+        await client.activate()
+
+
+async def test_receipt_signed_with_the_consumers_own_key_is_refused() -> None:
+    """Anyone holding the consumer key could forge a grant; only a Gate key counts."""
+    transport = RecordingTransport(_gate(_receipt_payload(), key=ODOO_KEY, key_id="odoo-k1"))
+
+    with pytest.raises(GateSecurityError, match="trusted Gate key"):
+        await GateClient(_signed_config(), transport=transport).activate()
+
+
+def test_overrides_are_applied_before_a_malformed_environment_value_is_parsed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GATE_URL", "http://gate:9000")
+    monkeypatch.setenv("GATE_CLIENT_TIMEOUT_SECONDS", "not-a-number")
+    monkeypatch.setenv("GATE_CLIENT_TRANSPORT_MARGIN_MS", "also-bad")
+
+    config = get_gate_client_config_from_env(timeout_seconds=5.0, transport_margin_ms=0)
+
+    assert config.timeout_seconds == 5.0
+    with pytest.raises(ValueError):
         get_gate_client_config_from_env()
