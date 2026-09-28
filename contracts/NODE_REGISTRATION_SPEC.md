@@ -68,6 +68,10 @@ SDK enforces that: non-string values are rejected before the request is built.
 - `NodeRegistration` — the typed registration, rendered by `to_payload()`
 - `register_node(...)` — register from in-process configuration; no spec.yaml needed
 - `build_node_registration(spec)` / `register_with_gate(...)` — the spec.yaml path
+- `register_from_env(registration=None)` — env-configured; an in-process
+  `NodeRegistration` replaces the spec file when given
+- `create_node_app(registration=None)` — the default: the runtime owns the
+  node's participation (below), so a node needs no registration code at all
 
 Both paths render the identical body.
 
@@ -87,3 +91,31 @@ Retry policy: registration is control-plane reconciliation, not application
 execution, so it retries with bounded exponential backoff. A Gate rejection
 (400, 401, 403, 409, 422) is a decision and is never retried. Failure is
 non-fatal: registration returns a boolean and never raises into node startup.
+
+## Participation lifecycle (L9-PARTICIPATION-01)
+
+`create_node_app()` owns the node's Gate participation (`NodeParticipation`),
+so a node never writes its own registration loop or registration-aware
+readiness:
+
+| State | Meaning | `/v1/ready` |
+|---|---|---|
+| `disabled` | `auto_register_with_gate=False`, `GATE_REGISTRATION_ENABLED=false`, or no Gate URL | 200 |
+| `not_attempted` | enabled, no attempt completed yet | 503 |
+| `registering` | first attempt in flight | 503 |
+| `active` | Gate accepted the most recent attempt | 200 |
+| `degraded` | the most recent attempt failed (rejected, unreachable, or the registration could not be built) | 503 |
+
+- Startup makes one bounded attempt (the retry policy above), then the node
+  re-registers every `GATE_REREGISTRATION_INTERVAL_SECONDS` (default 300; 0
+  disables the loop). Gate's registry is in memory; this is what brings a node
+  back after a Gate restart without node code.
+- A re-registration of an `active` node keeps it `active` until the attempt
+  resolves, so readiness does not flap on every interval.
+- `GET /v1/health` is liveness: always 200, with the participation status under
+  `gate_participation`. Gate's health monitor probes it by status code, so a
+  node Gate has not accepted yet is still reachable for the probe.
+- `GET /v1/ready` is readiness: 200 only in `active` or `disabled`.
+- Shutdown cancels the loop. Gate has no deregistration call.
+
+The SDK asks; Gate decides. A node is `active` only after Gate accepted it.

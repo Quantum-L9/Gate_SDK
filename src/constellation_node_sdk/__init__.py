@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from constellation_node_sdk.gate import (
+    ADMISSION_ACTION,
+    ConsumerAccessReceipt,
+    GateAuthorizationError,
     GateClient,
     GateClientConfig,
     GateClientError,
@@ -14,6 +17,7 @@ from constellation_node_sdk.gate import (
     GateSecurityError,
     GateTimeoutError,
     NodeRegistration,
+    activate_consumer,
     assert_gate_only_destination,
     assert_local_node_identity,
     assert_node_origin_packet,
@@ -29,8 +33,11 @@ from constellation_node_sdk.gate import (
 )
 from constellation_node_sdk.runtime import (
     LifecycleHook,
+    NodeParticipation,
     NodeRuntimeConfig,
     NoOpLifecycle,
+    ParticipationState,
+    ParticipationStatus,
     PreflightFailure,
     clear_handlers,
     create_error_transport_packet,
@@ -77,6 +84,13 @@ from constellation_node_sdk.transport import (
 )
 
 __all__ = [
+    "ADMISSION_ACTION",
+    "ConsumerAccessReceipt",
+    "GateAuthorizationError",
+    "NodeParticipation",
+    "ParticipationState",
+    "ParticipationStatus",
+    "activate_consumer",
     "DelegationLink",
     "GateClient",
     "GateClientConfig",

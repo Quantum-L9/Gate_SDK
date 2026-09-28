@@ -9,7 +9,7 @@ import httpx
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .config import GateRegistrationConfig, get_gate_registration_config_from_env
+from .config import GateRegistrationConfig, _env_bool, get_gate_registration_config_from_env
 
 _DEFAULT_RETRY_BASE_SECONDS = 1.0
 _DEFAULT_HEALTH_ENDPOINT = "/v1/health"
@@ -322,14 +322,29 @@ async def register_with_gate(
     )
 
 
-async def register_from_env() -> bool:
+async def register_from_env(registration: NodeRegistration | None = None) -> bool:
     """
     Convenience wrapper for Gate registration using environment-derived config.
+
+    ``registration`` replaces the ``GATE_NODE_SPEC_PATH`` spec file for nodes
+    whose identity comes from application settings. ``GATE_REGISTRATION_ENABLED``
+    is honoured before ``GATE_URL`` is required, so a node with registration
+    switched off needs no Gate URL.
     """
+    if not _env_bool("GATE_REGISTRATION_ENABLED", True):
+        return False
     config: GateRegistrationConfig = get_gate_registration_config_from_env()
     if not config.registration_enabled:
         return False
 
+    if registration is not None:
+        return await register_node(
+            gate_url=config.gate_url,
+            registration=registration,
+            admin_token=config.admin_token,
+            retries=config.retries,
+            overwrite=config.overwrite,
+        )
     return await register_with_gate(
         gate_url=config.gate_url,
         admin_token=config.admin_token,

@@ -415,3 +415,25 @@ Before considering a change complete, confirm:
 This repo is not just a helper library.
 
 It is the protocol boundary that keeps the Constellation architecture coherent.
+
+13. L9-PARTICIPATION-01 (2026-09-27)
+Installing Gate_SDK and supplying valid L9 identity/security configuration is
+the complete integration boundary for participating in L9.
+
+For a node: `create_node_app()` takes it from birthed to active, routable and
+self-recovering — registration, re-registration after Gate restarts
+(`GATE_REREGISTRATION_INTERVAL_SECONDS`), and readiness bound to participation
+(`/v1/ready`) are SDK-owned (`runtime/participation.py`).
+
+For a consumer: `GateClient.activate()` confirms admission and the granted
+actions (`POST /v1/admission`), and every Gate refusal is typed
+(`GateAuthorizationError`, `.code`, `.retryable`).
+
+No downstream repository owns transport, registration HTTP, registration
+recovery, participation readiness, security verification mechanics, failure
+classification, or peer discovery. If a node or consumer needs code for any of
+these, that is an SDK capability gap (§2.6): fix it here.
+
+The SDK owns the ceremony; Gate owns the decision. Nothing in the SDK grants a
+key, a scope, or a registration — Gate verifies identity, scopes actions and
+accepts registrations.

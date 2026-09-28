@@ -122,8 +122,13 @@ need `httpx`, and never need to match substrings against an exception message.
 | `GateSecurityError` | Signing, signature, or integrity failure (`.direction`) | no |
 | `GateConnectionError` | Gate never reached; nothing ran | yes |
 | `GateTimeoutError` | Deadline elapsed (`.timeout_seconds`); Gate may have run it | only under a stable idempotency key |
-| `GateHTTPError` | Non-2xx (`.status_code`, `.is_server_error`) | server errors only |
+| `GateHTTPError` | Non-2xx (`.status_code`, `.code`, `.is_server_error`) | 408, 429, 5xx except 501/505 |
+| `GateAuthorizationError` | 401/403: Gate refused the caller's authority (`.code`, e.g. `action_not_permitted`) | no |
 | `GateResponseError` | Answer was not a canonical packet | no |
+
+Every error carries `retryable`, the SDK's classification of the table above,
+so a consumer needs no failure classifier of its own. `GateHTTPError.code` is
+Gate's machine-readable error code when the body carries one.
 
 ```python
 try:
@@ -143,6 +148,36 @@ stringify to an empty string.
 `GatePolicyError`, `GateResponseError`, and `GateConfigurationError` also
 subclass `ValueError`, and `GateTimeoutError` also subclasses `TimeoutError`,
 so callers written before the taxonomy keep working.
+
+---
+
+## Consumer admission — `activate()`
+
+A consumer is admitted by Gate's operator (its key id in Gate's
+`L9_VERIFYING_KEYS_JSON`, optionally scoped by `L9_KEY_ALLOWED_ACTIONS_JSON`).
+`activate()` asks Gate whether that has happened, before any business call:
+
+```python
+client = GateClient(get_gate_client_config_from_env())
+receipt = await client.activate(required_actions=("converge", "match"))
+receipt.granted_actions   # ("converge", "match")
+receipt.scope             # "restricted" | "unrestricted"
+```
+
+It sends one signed probe (reserved action `gate.admission`) to
+`POST /v1/admission`, verifies Gate's signed answer, and returns a typed
+`ConsumerAccessReceipt`. A required action Gate did not grant raises
+`GateAuthorizationError(code="action_not_permitted")`; an identity that cannot
+be proven (no signing key, key without id) or a receipt that cannot be
+authenticated (no verifying keys) raises `GateConfigurationError` before any
+request. The receipt is always signature-verified — even when
+`verify_response_signatures` is off for execute — and must be signed by a key in
+`verifying_keys` other than the consumer's own. Gate decides; the SDK only
+asks. `activate_consumer(config, required_actions=...)` is the one-call form.
+
+`get_gate_client_config_from_env(**overrides)` builds the config from the
+environment with explicit values winning, so an application whose settings live
+elsewhere never writes to `os.environ`.
 
 ---
 

@@ -62,6 +62,27 @@ load-balances workers, fails over, marks a node unhealthy, or reads a payload.
 
 See [`docs/gate-authority-transport.md`](docs/gate-authority-transport.md).
 
+### Participation (L9-PARTICIPATION-01)
+
+Joining L9 is also SDK-owned, for both kinds of participant. Gate decides;
+the SDK asks and keeps asking.
+
+```text
+node      create_node_app()  ── register ── active ── Gate restarts ── degraded
+                                    ▲                                     │
+                                    └──── re-register every interval ─────┘
+                                  /v1/ready follows the state; /v1/health stays 200
+
+consumer  GateClient.activate() ── signed probe ── POST /v1/admission
+                                  ◄── Gate-signed receipt: key id, scope, granted actions
+```
+
+`NodeParticipation` (`runtime/participation.py`) replaces the registration
+loops and registration-aware readiness nodes used to write for themselves.
+`activate()` replaces discovering admission from a 403 on a real call. Neither
+grants anything: Gate holds the keyring, the per-key action scopes and the
+registry. See `contracts/NODE_REGISTRATION_SPEC.md` and `docs/gate-client.md`.
+
 ## System model
 
 ```text

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -20,14 +21,21 @@ from constellation_node_sdk.transport.packet import TransportPacket, create_tran
 from constellation_node_sdk.transport.provenance import RoutingProvenance
 from constellation_node_sdk.transport.tenant import TenantContext
 
+from .admission import (
+    ADMISSION_ACTION,
+    ADMISSION_PATH,
+    ConsumerAccessReceipt,
+    parse_admission_payload,
+)
 from .config import GateClientConfig
 from .errors import (
+    GateAuthorizationError,
     GateConfigurationError,
     GateConnectionError,
-    GateHTTPError,
     GateResponseError,
     GateSecurityError,
     GateTimeoutError,
+    gate_http_error,
 )
 from .policy import validate_outbound_gate_packet
 
@@ -36,7 +44,7 @@ from .policy import validate_outbound_gate_packet
 _GATE_TRANSPORT_ERRORS = PacketTransportErrors(
     timeout=GateTimeoutError,
     connection=GateConnectionError,
-    http=GateHTTPError,
+    http=gate_http_error,
     response=GateResponseError,
 )
 
@@ -410,18 +418,24 @@ class GateClient:
         # thing and makes `require_signature=True` unusable for a node that
         # signs its own traffic — it would reject every packet for a missing
         # signature it was about to add.
+        return await self._exchange(packet, path="/v1/execute", context="Gate execute")
+
+    async def _exchange(
+        self, packet: TransportPacket, *, path: str, context: str
+    ) -> TransportPacket:
+        """Sign, validate, POST exactly once to ``path`` on Gate, and validate the answer."""
         self._validate_routing_policy(packet)
         signed_packet = self._maybe_sign(packet)
         self._validate_outbound_transport(signed_packet)
         timeout_seconds = self._network_timeout_seconds(signed_packet)
 
         response = await self._post_json(
-            url=f"{self._config.gate_url}/v1/execute",
+            url=f"{self._config.gate_url}{path}",
             json_body=signed_packet.model_dump_json_dict(),
             timeout_seconds=timeout_seconds,
         )
-        self._raise_for_status(response, context="Gate execute")
-        body = self._decode_packet_body(response, context="Gate execute response")
+        self._raise_for_status(response, context=context)
+        body = self._decode_packet_body(response, context=f"{context} response")
 
         try:
             response_packet = TransportPacket.model_validate(body)
@@ -438,6 +452,89 @@ class GateClient:
 
         self._validate_inbound_response(response_packet)
         return response_packet
+
+    # ------------------------------------------------------------------
+    # Consumer admission
+    # ------------------------------------------------------------------
+
+    async def activate(
+        self,
+        *,
+        required_actions: tuple[str, ...] | list[str] = (),
+        tenant: str | Mapping[str, Any] | TenantContext = "l9",
+        timeout_ms: int | None = None,
+    ) -> ConsumerAccessReceipt:
+        """
+        Ask Gate whether this consumer is admitted, and for which actions.
+
+        Sends a signed admission probe to ``POST /v1/admission`` (one request,
+        no retry) and returns Gate's answer as a :class:`ConsumerAccessReceipt`.
+        Gate decides; this call only asks. The probe carries no business payload
+        and is never dispatched to a node.
+
+        Raises:
+            GateConfigurationError: The client cannot prove an identity: no
+                signing key, a key without a key id, or response verification
+                enabled with no verifying keys.
+            GateAuthorizationError: Gate refused the probe (403), or Gate did
+                not grant every action in ``required_actions``
+                (``code == "action_not_permitted"``).
+            GateHTTPError: Gate rejected the probe otherwise (e.g. unknown key
+                or bad signature → 400).
+            GateConnectionError / GateTimeoutError / GateResponseError /
+            GateSecurityError: as for :meth:`execute`.
+        """
+        problems = self._config.admission_problems()
+        if problems:
+            raise GateConfigurationError("consumer cannot be activated: " + "; ".join(problems))
+        required = tuple(dict.fromkeys(a.strip().lower() for a in required_actions if a.strip()))
+        packet = self._build_root_packet(
+            action=ADMISSION_ACTION,
+            payload={},
+            tenant=tenant,
+            idempotency_key=None,
+            budget_ms=self._resolve_operation_budget_ms(timeout_ms),
+            correlation_id=None,
+            trace_id=None,
+            classification="internal",
+            compliance_tags=(),
+            retention_days=1,
+            priority=2,
+        )
+        # The receipt is authoritative only if Gate signed it: verify it even when
+        # this client does not verify execute responses, and only accept a key
+        # from the configured verifying keyring — never this client's own key.
+        verifying = GateClient(
+            self._config.model_copy(update={"verify_response_signatures": True}),
+            transport=self._transport,
+        )
+        response = await verifying._exchange(packet, path=ADMISSION_PATH, context="Gate admission")
+        signer = response.security.signing_key_id
+        if (
+            response.security.signature is None
+            or signer is None
+            or signer not in self._config.verifying_keys
+            or signer == self._config.signing_key_id
+        ):
+            raise GateSecurityError(
+                f"Gate admission receipt is not signed by a trusted Gate key (signer={signer!r})",
+                direction="inbound",
+            )
+        receipt = parse_admission_payload(dict(response.payload), required_actions=required)
+        if receipt.missing_actions:
+            missing = ", ".join(receipt.missing_actions)
+            message = (
+                f"Gate admitted key {receipt.key_id!r} but did not grant: {missing} "
+                f"(granted: {', '.join(receipt.granted_actions) or 'none'})"
+            )
+            raise GateAuthorizationError(
+                message,
+                status_code=403,
+                response_text=json.dumps(
+                    {"detail": {"code": "action_not_permitted", "message": message}}
+                ),
+            )
+        return receipt
 
     async def health(self) -> dict[str, Any]:
         """
@@ -467,3 +564,13 @@ class GateClient:
 
         self._raise_for_status(response, context="Gate health")
         return self._decode_packet_body(response, context="Gate health response")
+
+
+async def activate_consumer(
+    config: GateClientConfig,
+    *,
+    required_actions: tuple[str, ...] | list[str] = (),
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> ConsumerAccessReceipt:
+    """Ask Gate whether ``config``'s identity is admitted; see :meth:`GateClient.activate`."""
+    return await GateClient(config, transport=transport).activate(required_actions=required_actions)

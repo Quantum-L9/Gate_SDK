@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import json
 from typing import Any
+
+# HTTP statuses a caller may retry (with a stable idempotency key): the request
+# timed out, was throttled, or Gate/an upstream was temporarily unavailable.
+# 501 and 505 are server errors that no retry can fix.
+_RETRYABLE_HTTP_STATUSES = frozenset({408, 429})
+_NON_RETRYABLE_SERVER_STATUSES = frozenset({501, 505})
 
 
 class GateClientError(Exception):
@@ -10,7 +17,14 @@ class GateClientError(Exception):
     Callers classify Gate transport failures by catching these types. They must
     never need to import ``httpx`` or parse exception strings to decide whether a
     failure is retryable, permanent, or a local configuration mistake.
+
+    ``retryable`` is the SDK's classification. A retry of an execution is only
+    safe under a stable idempotency key; the SDK itself never retries one.
     """
+
+    @property
+    def retryable(self) -> bool:
+        return False
 
 
 class GateConfigurationError(GateClientError, ValueError):
@@ -61,6 +75,10 @@ class GateConnectionError(GateClientError):
     retryable transport failure.
     """
 
+    @property
+    def retryable(self) -> bool:
+        return True
+
 
 class GateTimeoutError(GateClientError, TimeoutError):
     """
@@ -78,6 +96,10 @@ class GateTimeoutError(GateClientError, TimeoutError):
         super().__init__(message)
         self.timeout_seconds = timeout_seconds
 
+    @property
+    def retryable(self) -> bool:
+        return True
+
 
 class GateHTTPError(GateClientError):
     """
@@ -85,7 +107,8 @@ class GateHTTPError(GateClientError):
 
     ``status_code`` is the status Gate returned and ``response_text`` is the
     (truncated) body, so callers can distinguish a 4xx rejection from a 5xx
-    outage without re-reading the wire.
+    outage without re-reading the wire. ``code`` is Gate's machine-readable
+    error code (for example ``action_not_permitted``) when the body carries one.
     """
 
     _MAX_BODY_CHARS = 2048
@@ -102,6 +125,13 @@ class GateHTTPError(GateClientError):
         self.response_text = (
             response_text[: self._MAX_BODY_CHARS] if response_text is not None else None
         )
+        self.code = _gate_error_code(response_text)
+
+    @property
+    def retryable(self) -> bool:
+        if self.status_code in _RETRYABLE_HTTP_STATUSES:
+            return True
+        return self.is_server_error and self.status_code not in _NON_RETRYABLE_SERVER_STATUSES
 
     @property
     def is_client_error(self) -> bool:
@@ -110,6 +140,42 @@ class GateHTTPError(GateClientError):
     @property
     def is_server_error(self) -> bool:
         return 500 <= self.status_code < 600
+
+
+class GateAuthorizationError(GateHTTPError):
+    """
+    Raised when Gate refused the caller's authority (HTTP 401 or 403).
+
+    Gate verified who the caller is and said no: the key is not permitted the
+    action (``code == "action_not_permitted"``), the routing policy forbids it,
+    or an admin credential was refused. Also raised by
+    :meth:`GateClient.activate` when Gate does not grant a required action.
+    Never retryable: authority is changed by Gate's operator, not by retrying.
+    """
+
+
+def _gate_error_code(response_text: str | None) -> str | None:
+    """Extract Gate's error code from ``{"detail": {"code": ...}}`` or ``{"code": ...}``."""
+    if not response_text:
+        return None
+    try:
+        body = json.loads(response_text)
+    except ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    detail = body.get("detail")
+    candidate = detail.get("code") if isinstance(detail, dict) else body.get("code")
+    return candidate if isinstance(candidate, str) and candidate else None
+
+
+def gate_http_error(
+    message: str, *, status_code: int, response_text: str | None = None
+) -> GateHTTPError:
+    """Build the most specific typed error for a non-success Gate HTTP status."""
+    if status_code in {401, 403}:
+        return GateAuthorizationError(message, status_code=status_code, response_text=response_text)
+    return GateHTTPError(message, status_code=status_code, response_text=response_text)
 
 
 class GateResponseError(GateClientError, ValueError):
@@ -134,6 +200,7 @@ class GateRegistrationError(GateClientError):
 
 
 __all__ = [
+    "GateAuthorizationError",
     "GateClientError",
     "GateConfigurationError",
     "GateConnectionError",
@@ -143,4 +210,5 @@ __all__ = [
     "GateResponseError",
     "GateSecurityError",
     "GateTimeoutError",
+    "gate_http_error",
 ]
