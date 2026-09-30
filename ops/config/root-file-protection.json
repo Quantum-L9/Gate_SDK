@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.1.0",
+  "description": "Append-only protection contract for Gate_SDK repository-root files. Read by validate_root_file_protection.py. A version rewrite of pyproject.toml requires ALLOW-ROOT-DELETION in a commit message and the protected-root PR template.",
+  "rules": {
+    "additive_only": "A PR may only add lines unless a matching ALLOW-ROOT-DELETION marker is in the PR commit messages.",
+    "managed": "Edits are allowed without a justification marker.",
+    "regenerable": "Machine-generated artifact. Exempt from the additive check."
+  },
+  "justification": {
+    "marker": "ALLOW-ROOT-DELETION",
+    "format": "ALLOW-ROOT-DELETION: <root-relative-path> — <reason with proof of necessity>",
+    "recorded_in": "any commit message in the PR range (base..head)",
+    "applies_to": "additive_only files only"
+  },
+  "pr_template": {
+    "path": ".github/pull_request_template.md",
+    "stamp": "<!-- L9_PROTECTED_ROOT_PR -->",
+    "required_when": "any additive_only protected_files path is in the PR diff",
+    "enforced_by": "validate_root_file_protection.py --require-pr-body; make pr fills the Protected-root block"
+  },
+  "tiers": {
+    "canonical": "rule=additive_only",
+    "managed": "rule=managed",
+    "regenerable": "rule=regenerable"
+  },
+  "protected_files": [
+    { "path": ".env.example", "tier": "managed", "rule": "managed" },
+    { "path": ".gitignore", "tier": "managed", "rule": "managed" },
+    { "path": ".pre-commit-config.yaml", "tier": "canonical", "rule": "additive_only" },
+    { "path": "AGENTS.md", "tier": "canonical", "rule": "additive_only" },
+    { "path": "ARCHITECTURE.md", "tier": "managed", "rule": "managed" },
+    { "path": "CHANGELOG.md", "tier": "managed", "rule": "managed" },
+    { "path": "CODE_OF_CONDUCT.md", "tier": "managed", "rule": "managed" },
+    { "path": "CONTRIBUTING.md", "tier": "managed", "rule": "managed" },
+    { "path": "FINAL_FINDINGS.md", "tier": "managed", "rule": "managed" },
+    { "path": "LICENSE", "tier": "canonical", "rule": "additive_only" },
+    { "path": "LOAD_PACK__REGISTRY.md", "tier": "managed", "rule": "managed" },
+    { "path": "Makefile", "tier": "canonical", "rule": "additive_only" },
+    { "path": "PR_FINDINGS_BRIEF.md", "tier": "managed", "rule": "managed" },
+    { "path": "README.md", "tier": "managed", "rule": "managed" },
+    { "path": "SECURITY.md", "tier": "canonical", "rule": "additive_only" },
+    { "path": "pyproject.toml", "tier": "canonical", "rule": "additive_only" }
+  ],
+  "exempt_root_files": []
+}
