@@ -2,10 +2,10 @@
   "schema": "l9.gate_sdk.release_identity_ledger.v2",
   "distribution_name": "constellation-node-sdk",
   "import_name": "constellation_node_sdk",
-  "package_version": "1.1.0",
+  "package_version": "1.2.0",
   "protocol_version": "1.0",
   "python_requires": ">=3.12",
-  "release_tag": "v1.1.0",
+  "release_tag": "v1.2.0",
   "compatibility_channel": "v1",
   "consumer_contract": {
     "mode": "moving_major_tag",
@@ -21,12 +21,12 @@
     "channel_promotion": "promote-channel: moves compatibility_channel onto the release object after every gate, then --verify-tag",
     "note": "The only workflow that publishes, releases, or moves the channel. A workflow_dispatch run is a rehearsal and has no path to any of the three."
   },
-  "github_release_url": "https://github.com/Quantum-L9/Gate_SDK/releases/tag/v1.1.0",
+  "github_release_url": "https://github.com/Quantum-L9/Gate_SDK/releases/tag/v1.2.0",
   "github_release_status": "created",
   "artifacts": {
     "wheel": null,
     "sdist": null,
-    "note": "No published artifact for 1.1.0; consumers install from the compatibility channel via git+https and hash-verify the resolved archive in their generated lock."
+    "note": "No published artifact for 1.2.0; consumers install from the compatibility channel via git+https and hash-verify the resolved archive in their generated lock."
   },
   "agreement_rules": [
     "package_version must equal pyproject.toml [project].version",
