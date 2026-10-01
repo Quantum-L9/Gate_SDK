@@ -24,9 +24,9 @@
   "github_release_url": "https://github.com/Quantum-L9/Gate_SDK/releases/tag/v1.2.0",
   "github_release_status": "created",
   "artifacts": {
-    "wheel": null,
-    "sdist": null,
-    "note": "No published artifact for 1.2.0; consumers install from the compatibility channel via git+https and hash-verify the resolved archive in their generated lock."
+    "wheel": "constellation_node_sdk-1.2.0-py3-none-any.whl",
+    "sdist": "constellation_node_sdk-1.2.0.tar.gz",
+    "note": "The v1.2.0 release workflow published this wheel and sdist to PyPI and attached them, with sbom-1.2.0.cdx.json, to the GitHub release. Consumers still declare compatibility channel v1."
   },
   "agreement_rules": [
     "package_version must equal pyproject.toml [project].version",
