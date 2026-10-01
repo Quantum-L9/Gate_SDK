@@ -3,6 +3,27 @@
      does NOT propagate org-wide — GitHub only reads the nested path.
      See docs/AUDIT.md, finding #1. -->
 
+<!-- L9_PROTECTED_ROOT_PR -->
+
+## Protected-root
+
+### Paths
+
+- ` `
+
+### Edit mode (pick one per path)
+
+- [ ] **Append-only** — existing lines kept
+- [ ] **Justified rewrite** — commit contains ALLOW-ROOT-DELETION
+
+### Why a root file
+
+<!-- What cannot be done in a non-root path. Composer fills. -->
+
+### Proof of necessity (rewrites only)
+
+<!-- Issue, failing gate, or law citation. Empty if every path is append-only. -->
+
 ## Problem
 
 <!-- REQUIRED. The error, bug, or gap this fixes. Lead with the symptom a human saw.

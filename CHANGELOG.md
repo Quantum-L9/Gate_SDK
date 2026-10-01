@@ -8,6 +8,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-09-30
+
 Participation closure (L9-PARTICIPATION-01): a node or consumer joins L9 with
 the SDK and its security configuration alone. Harvested from the machinery
 EIE, CEG and IB-Odoo_19 each wrote for themselves, and proven on CEG's
