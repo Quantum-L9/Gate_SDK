@@ -255,7 +255,7 @@ jobs:
           fi
 
       - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@f714bf454f350590f4a24c3ddb1aef02c35bf5b6 # v3.97.5
+        uses: trufflesecurity/trufflehog@31ce31ee1abbcc7dc8eee5764c17121c3044c8b2 # v3.99.7
         with:
           # The action runs "${image}:${version}"; tag@digest makes the
           # engine content-addressed instead of `latest`.
