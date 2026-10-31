@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import secrets
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NoReturn
@@ -10,6 +11,7 @@ from typing import NoReturn
 __all__ = [
     "TraceContext",
     "TraceContextError",
+    "create_root_trace_context",
     "inject_trace_context",
     "parse_trace_context",
 ]
@@ -38,6 +40,21 @@ class TraceContextError(ValueError):
 
 def _raise_invalid() -> NoReturn:
     raise TraceContextError(_ERROR_MESSAGE) from None
+
+
+def create_root_trace_context() -> TraceContext:
+    """Create a fresh valid, unsampled W3C v00 root context.
+
+    This establishes correlation only. It carries no caller identity, routing
+    authority, packet state, or sampling policy beyond the conservative
+    unsampled default. Deployment-specific sampling remains outside this
+    packet-neutral utility.
+    """
+    while True:
+        trace_id = secrets.token_hex(16)
+        parent_id = secrets.token_hex(8)
+        if trace_id != "0" * 32 and parent_id != "0" * 16:
+            return TraceContext(f"00-{trace_id}-{parent_id}-00")
 
 
 @dataclass(frozen=True, slots=True, repr=False)

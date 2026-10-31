@@ -10,6 +10,7 @@ import pytest
 from constellation_node_sdk.trace_context import (
     TraceContext,
     TraceContextError,
+    create_root_trace_context,
     inject_trace_context,
     parse_trace_context,
 )
@@ -105,6 +106,16 @@ class _BoundedScanMapping(Mapping[str, object]):
 
     def __len__(self) -> int:
         return 10_000
+
+
+def test_root_context_is_valid_fresh_and_unsampled() -> None:
+    first = create_root_trace_context()
+    second = create_root_trace_context()
+
+    assert parse_trace_context({"traceparent": first.traceparent}) == first
+    assert first.tracestate is None
+    assert first.traceparent.endswith("-00")
+    assert first.traceparent != second.traceparent
 
 
 def test_parse_and_inject_normalize_context_without_baggage() -> None:
