@@ -8,7 +8,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [1.3.1] — 2026-11-01
+## [1.3.2] — 2026-11-01
 
 ### Added
 - **W3C trace-context utility** — `TraceContext`, strict parsing/injection,
