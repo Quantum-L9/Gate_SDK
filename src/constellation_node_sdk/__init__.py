@@ -56,6 +56,13 @@ from constellation_node_sdk.security import (
     validate_transport_packet,
     verify_transport_packet_signature,
 )
+from constellation_node_sdk.trace_context import (
+    TraceContext,
+    TraceContextError,
+    create_root_trace_context,
+    inject_trace_context,
+    parse_trace_context,
+)
 from constellation_node_sdk.transport import (
     DelegationLink,
     RoutingProvenance,
@@ -126,6 +133,8 @@ __all__ = [
     "TransportPacket",
     "TransportSecurity",
     "TransportValidationError",
+    "TraceContext",
+    "TraceContextError",
     "assert_gate_only_destination",
     "assert_local_node_identity",
     "assert_node_origin_packet",
@@ -137,6 +146,7 @@ __all__ = [
     "compute_transport_hash",
     "create_error_transport_packet",
     "create_node_app",
+    "create_root_trace_context",
     "create_transport_packet",
     "ensure_tenant_context",
     "execute_transport_packet",
@@ -144,7 +154,9 @@ __all__ = [
     "get_gate_registration_config_from_env",
     "get_handler",
     "get_runtime_config",
+    "inject_trace_context",
     "load_node_spec",
+    "parse_trace_context",
     "recompute_transport_core",
     "register_from_env",
     "register_handler",
