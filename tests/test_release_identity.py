@@ -345,8 +345,9 @@ def test_channel_promotion_follows_every_gate_and_is_reproved() -> None:
     runs = [str(step.get("run", "")) for step in promote["steps"]]
     gate = next(i for i, r in enumerate(runs) if "--release-gate" in r)
     move = next(i for i, r in enumerate(runs) if "refs/tags/${CHANNEL}" in r)
+    refresh = next(i for i, r in enumerate(runs) if "git fetch --force origin" in r)
     proof = next(i for i, r in enumerate(runs) if "--verify-tag" in r)
-    assert gate < move < proof
+    assert gate < move < refresh < proof
 
 
 def test_ledger_names_the_release_authority() -> None:

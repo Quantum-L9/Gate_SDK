@@ -407,6 +407,17 @@ jobs:
             "+${RELEASE_SHA}:refs/tags/${CHANNEL}"
           echo "Promoted ${CHANNEL} -> ${RELEASE_TAG} (${RELEASE_SHA})"
 
+      - name: Refresh the local channel ref after promotion
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          CHANNEL="v${VERSION%%.*}"
+          # The push above updates the canonical remote but not this runner's
+          # pre-existing local tag. The final validator intentionally checks
+          # both views, so refresh the exact trusted channel ref first.
+          git fetch --force origin "refs/tags/${CHANNEL}:refs/tags/${CHANNEL}"
+
       - name: Prove channel agreement at the canonical remote
         run: python scripts/validate_release_identity.py --verify-tag
 
