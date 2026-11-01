@@ -25,6 +25,7 @@ from constellation_node_sdk.gate_authority import GateDispatchTransport
 from constellation_node_sdk.runtime import execution
 from constellation_node_sdk.runtime.handlers import clear_handlers, register_handler
 from constellation_node_sdk.security.validation import validate_transport_packet
+from constellation_node_sdk.trace_context import TraceContext, TraceContextError
 from constellation_node_sdk.transport.packet import TransportPacket, create_transport_packet
 from constellation_node_sdk.transport.provenance import RoutingProvenance
 
@@ -93,6 +94,69 @@ async def test_the_domain_payload_reaches_the_worker_unchanged(converge_worker: 
     )
 
     assert recording.sent_packet(0)["payload"] == CONSUMER_PAYLOAD
+
+
+@pytest.mark.asyncio
+async def test_validated_gate_context_crosses_only_as_w3c_headers(converge_worker: Any) -> None:
+    dispatch, recording = _transport()
+    packet = make_gate_dispatch_packet(target_node=WORKER, payload=CONSUMER_PAYLOAD)
+    context = TraceContext(
+        "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00",
+        "acme=opaque",
+    )
+
+    await dispatch.send_gate_authored_packet(
+        packet=packet,
+        target_node=WORKER,
+        worker_base_url="http://enrichment-engine:8000",
+        trace_context=context,
+    )
+
+    headers = recording.requests[0].headers
+    assert headers["traceparent"] == context.traceparent
+    assert headers["tracestate"] == context.tracestate
+    assert "baggage" not in headers
+    assert recording.sent_packet(0)["payload"] == CONSUMER_PAYLOAD
+
+
+@pytest.mark.asyncio
+async def test_trace_context_does_not_mutate_the_dispatched_packet_or_deadline(
+    converge_worker: Any,
+) -> None:
+    dispatch, recording = _transport()
+    packet = make_gate_dispatch_packet(target_node=WORKER, payload=CONSUMER_PAYLOAD)
+    expected_wire = packet.model_dump_json_dict()
+    expected_hash = packet.security.transport_hash
+
+    await dispatch.send_gate_authored_packet(
+        packet=packet,
+        target_node=WORKER,
+        worker_base_url="http://enrichment-engine:8000",
+        trace_context=TraceContext("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"),
+    )
+
+    assert recording.sent_packet(0) == expected_wire
+    assert packet.security.transport_hash == expected_hash
+    assert recording.applied_timeout(0)["read"] == pytest.approx(packet.header.timeout_ms / 1000)
+    assert len(recording.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_invalid_trace_context_is_refused_before_a_worker_request(
+    converge_worker: Any,
+) -> None:
+    dispatch, recording = _transport()
+    packet = make_gate_dispatch_packet(target_node=WORKER, payload=CONSUMER_PAYLOAD)
+
+    with pytest.raises(TraceContextError, match="invalid W3C trace context"):
+        await dispatch.send_gate_authored_packet(
+            packet=packet,
+            target_node=WORKER,
+            worker_base_url="http://enrichment-engine:8000",
+            trace_context={"baggage": "private-marker"},  # type: ignore[arg-type]
+        )
+
+    assert recording.requests == []
 
 
 @pytest.mark.asyncio
@@ -229,7 +293,7 @@ async def test_the_public_surface_has_no_timeout_parameter() -> None:
 
     parameters = set(inspect.signature(GateDispatchTransport.send_gate_authored_packet).parameters)
     assert not (parameters & {"timeout", "timeout_ms", "timeout_seconds", "deadline"})
-    assert parameters == {"self", "packet", "target_node", "worker_base_url"}
+    assert parameters == {"self", "packet", "target_node", "worker_base_url", "trace_context"}
 
 
 @pytest.mark.asyncio

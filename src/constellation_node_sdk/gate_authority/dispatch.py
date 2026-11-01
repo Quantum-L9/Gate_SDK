@@ -17,6 +17,7 @@ from constellation_node_sdk._packet_http import (
 from constellation_node_sdk.runtime.inbound_policy import validate_execute_ingress_packet
 from constellation_node_sdk.security.signing import sign_transport_packet
 from constellation_node_sdk.security.validation import validate_transport_packet
+from constellation_node_sdk.trace_context import TraceContext, inject_trace_context
 from constellation_node_sdk.transport.errors import TransportError
 from constellation_node_sdk.transport.packet import TransportPacket
 
@@ -144,6 +145,7 @@ class GateDispatchTransport:
         packet: TransportPacket,
         target_node: str,
         worker_base_url: str,
+        trace_context: TraceContext | None = None,
     ) -> TransportPacket:
         """
         Send a Gate-authored dispatch packet to the worker Gate resolved.
@@ -168,6 +170,10 @@ class GateDispatchTransport:
             target_node: The node name Gate resolved.
             worker_base_url: That node's base URL from Gate's registry. The
                 canonical ``/v1/execute`` endpoint is appended by the SDK.
+            trace_context: Optional validated W3C context authored by Gate.
+                It is transported only as strict ``traceparent`` and optional
+                ``tracestate`` headers; baggage and arbitrary headers are not
+                accepted on this authority boundary.
 
         Returns:
             The validated canonical ``TransportPacket`` the worker returned.
@@ -197,6 +203,13 @@ class GateDispatchTransport:
         signed_packet = self._maybe_sign(packet)
         self._validate_outbound_transport(signed_packet)
         timeout_seconds = self._network_timeout_seconds(signed_packet)
+        trace_headers: dict[str, str] | None = None
+        if trace_context is not None:
+            injected = inject_trace_context({}, trace_context)
+            trace_headers = {"traceparent": str(injected["traceparent"])}
+            tracestate = injected.get("tracestate")
+            if isinstance(tracestate, str):
+                trace_headers["tracestate"] = tracestate
 
         response = await post_packet_json(
             url=execute_url,
@@ -206,6 +219,7 @@ class GateDispatchTransport:
             what=f"worker {normalized_target!r}",
             client=self._client,
             transport=self._transport if self._client is None else None,
+            headers=trace_headers,
         )
         raise_for_status(
             response,

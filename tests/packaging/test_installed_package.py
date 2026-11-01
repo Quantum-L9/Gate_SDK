@@ -139,6 +139,37 @@ emit({{"missing": missing, "checked": sum(len(e["symbols"]) for e in expected)}}
 # ---------------------------------------------------------------------------
 
 
+def test_installed_wheel_exposes_the_w3c_trace_context_surface(
+    installed_sdk: InstalledSdk,
+) -> None:
+    """The D5 context API must be available from the artifact Gate consumes."""
+    result = installed_sdk.run(
+        """
+import constellation_node_sdk as sdk
+
+expected = [
+    "TraceContext",
+    "TraceContextError",
+    "create_root_trace_context",
+    "inject_trace_context",
+    "parse_trace_context",
+]
+context = sdk.create_root_trace_context()
+parsed = sdk.parse_trace_context({"traceparent": context.traceparent})
+emit({
+    "missing": [name for name in expected if not hasattr(sdk, name)],
+    "unexported": [name for name in expected if name not in sdk.__all__],
+    "parsed": parsed == context,
+    "unsampled": context.traceparent.endswith("-00"),
+})
+"""
+    )
+    assert result["missing"] == []
+    assert result["unexported"] == []
+    assert result["parsed"] is True
+    assert result["unsampled"] is True
+
+
 def test_installed_wheel_creates_a_canonical_packet(installed_sdk: InstalledSdk) -> None:
     """Packet creation from the distribution mints the same canonical shape."""
     result = installed_sdk.run(
