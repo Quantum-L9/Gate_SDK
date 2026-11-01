@@ -8,6 +8,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-11-01
+
+### Added
+- **W3C trace-context utility** — `TraceContext`, strict parsing/injection,
+  and `create_root_trace_context()` are public SDK APIs. They preserve
+  canonical `TransportPacket` bytes, hashes, lineage, routing, and deadlines;
+  telemetry is never identity or routing authority.
+- **Gate-authority worker propagation** —
+  `GateDispatchTransport.send_gate_authored_packet(..., trace_context=...)`
+  accepts only a validated typed context and sends only `traceparent` plus an
+  optional `tracestate` on the existing Gate-owned worker rail. It excludes
+  baggage and arbitrary headers, adds no retry or deadline surface, and keeps
+  the worker transport outside application namespaces.
+
 ## [1.2.0] — 2026-09-30
 
 Participation closure (L9-PARTICIPATION-01): a node or consumer joins L9 with
