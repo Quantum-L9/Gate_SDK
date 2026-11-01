@@ -132,9 +132,7 @@ async def test_trace_context_does_not_mutate_the_dispatched_packet_or_deadline(
         packet=packet,
         target_node=WORKER,
         worker_base_url="http://enrichment-engine:8000",
-        trace_context=TraceContext(
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"
-        ),
+        trace_context=TraceContext("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"),
     )
 
     assert recording.sent_packet(0) == expected_wire
@@ -144,7 +142,9 @@ async def test_trace_context_does_not_mutate_the_dispatched_packet_or_deadline(
 
 
 @pytest.mark.asyncio
-async def test_invalid_trace_context_is_refused_before_a_worker_request(converge_worker: Any) -> None:
+async def test_invalid_trace_context_is_refused_before_a_worker_request(
+    converge_worker: Any,
+) -> None:
     dispatch, recording = _transport()
     packet = make_gate_dispatch_packet(target_node=WORKER, payload=CONSUMER_PAYLOAD)
 
