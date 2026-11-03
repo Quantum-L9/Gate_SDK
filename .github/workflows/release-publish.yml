@@ -16,6 +16,8 @@
 # 8 promote        — move the moving major channel (v1) onto the release,
 #                    then prove v1 == vX.Y.Z at the canonical remote
 
+# Installs are hash-locked; see the note in ci.yml (issue #53).
+#
 # ci.yml is a PR/push gate — it NEVER publishes.
 # This file is the ONLY release authority: identity gate, publication, and
 # channel promotion all live here. There is no second release workflow.
@@ -138,10 +140,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dev dependencies
+      - name: Install dev dependencies (hash-locked)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install --require-hashes --only-binary :all: -r requirements/build.lock
+          python -m pip install --require-hashes --only-binary :all: -r requirements/dev.lock
+          python -m pip install --no-index --no-deps --no-build-isolation -e .
+          python -m pip check
 
       - name: Ruff lint
         run: ruff check src tests scripts
@@ -154,6 +158,9 @@ jobs:
 
       - name: Contract validation
         run: python scripts/validate_contracts.py
+
+      - name: Dependency lock validation
+        run: python scripts/validate_locks.py
 
       - name: Schema drift check
         run: |
@@ -185,15 +192,17 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install package + audit tool
+      - name: Install package + audit tool (hash-locked)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
-          python -m pip install pip-audit
+          python -m pip install --require-hashes --only-binary :all: -r requirements/build.lock
+          python -m pip install --require-hashes --only-binary :all: -r requirements/dev.lock
+          python -m pip install --no-index --no-deps --no-build-isolation -e .
+          python -m pip install --require-hashes --only-binary :all: -r requirements/audit.lock
+          python -m pip check
 
       - name: pip-audit (release gate)
         # --skip-editable: the release candidate itself is installed editable
-        # (pip install -e ".[dev]") and is never on PyPI *before* this pipeline
+        # (offline, from the source tree) and is never on PyPI *before* this pipeline
         # publishes it, so pip-audit cannot resolve it for audit.
         # No --strict: --strict treats any skipped dependency (including
         # editable skips) as a fatal collection failure, which would defeat
@@ -221,16 +230,21 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install build toolchain
-        run: python -m pip install --upgrade pip setuptools wheel build
+      - name: Install build toolchain (hash-locked)
+        run: |
+          python -m pip install --require-hashes --only-binary :all: -r requirements/build.lock
 
       - name: Build sdist + wheel
-        run: python -m build
+        # --no-isolation: the published artifacts are built by the locked
+        # setuptools/wheel above, not by an unhashed backend downloaded into an
+        # isolated build environment at release time.
+        run: python -m build --no-isolation
 
       - name: Verify dist contents
         run: |
           ls -lh dist/
-          python -m pip install twine
+          python -m pip install --require-hashes --only-binary :all: -r requirements/twine.lock
+          python -m pip check
           twine check dist/*
 
       - name: Upload dist artifacts
@@ -259,11 +273,23 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install package + CycloneDX tool
+      - name: Download dist artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-dist-${{ needs.verify-tag.outputs.version }}
+          path: dist/
+
+      - name: Install released wheel + CycloneDX tool (hash-locked)
+        # The SBOM describes the wheel gate 4 built: hash-locked runtime
+        # dependencies, then that wheel offline. An editable install would need
+        # the build toolchain in this environment, and the SBOM (which scans
+        # the environment) would then list setuptools/wheel/build as release
+        # components.
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install cyclonedx-bom
+          python -m pip install --require-hashes --only-binary :all: -r requirements/runtime.lock
+          python -m pip install --no-index --no-deps dist/*.whl
+          python -m pip install --require-hashes --only-binary :all: -r requirements/sbom.lock
+          python -m pip check
 
       - name: Generate SBOM
         env:

@@ -2,13 +2,26 @@ PYTHON ?= python
 PIP ?= pip
 PYTEST ?= pytest
 
-.PHONY: install install-dev lint typecheck test test-unit test-integration schema validate-contracts clean
+.PHONY: install install-dev install-ci lock validate-locks lint typecheck test test-unit test-integration schema validate-contracts clean
 
 install:
 	$(PIP) install -e .
 
 install-dev:
 	$(PIP) install -e ".[dev]"
+
+# The hash-locked install CI runs (issue #53). Regenerate with `make lock`.
+install-ci:
+	$(PIP) install --require-hashes --only-binary :all: -r requirements/build.lock
+	$(PIP) install --require-hashes --only-binary :all: -r requirements/dev.lock
+	$(PIP) install --no-index --no-deps --no-build-isolation -e .
+	$(PIP) check
+
+lock:
+	$(PYTHON) scripts/lock_requirements.py
+
+validate-locks:
+	$(PYTHON) scripts/validate_locks.py
 
 lint:
 	ruff check src tests
