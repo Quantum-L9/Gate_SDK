@@ -174,12 +174,40 @@ def check_direct(root: Path, spec: LockSpec, own: dict[str, str]) -> list[str]:
     return errors
 
 
+def check_build_system(root: Path, build_pins: dict[str, str]) -> list[str]:
+    """``[build-system].requires`` must be satisfied by build.lock.
+
+    CI builds with --no-build-isolation, so the backend comes from build.lock,
+    not from ``[build-system]``. ``requirements/build.in`` restates those
+    requirements by hand; a stricter ``[build-system]`` floor that build.in
+    never picked up would otherwise pass here and fail the next build.
+    """
+    data = tomllib.loads((root / PYPROJECT).read_text(encoding="utf-8"))
+    errors: list[str] = []
+    for text in data.get("build-system", {}).get("requires", []):
+        requirement = Requirement(text)
+        version = build_pins.get(canonicalize_name(requirement.name))
+        if version is None or not requirement.specifier.contains(version, prereleases=True):
+            locked = f"locks {requirement.name}=={version}" if version else "does not lock it"
+            errors.append(
+                f"{SPECS['build'].path}: [build-system] requires {requirement}, but build.lock "
+                f"{locked} — update {LOCK_DIR}/build.in and regenerate"
+            )
+    return errors
+
+
 def check_workflow_line(rel: str, number: int, raw: str) -> list[str]:
     """One workflow line: an install must be hash-locked or offline."""
     line = raw.strip()
     if line.startswith("#") or "pip install" not in line:
         return []
     if "--no-index" in line and "--no-deps" in line:
+        # A source install builds the package here: the backend must be the
+        # locked one already installed, not an isolated (unreachable) one.
+        if " -e " in f" {line} " and "--no-build-isolation" not in line:
+            return [
+                f"{rel}:{number}: offline source install without --no-build-isolation: {line[:100]}"
+            ]
         return []
     missing = [flag for flag in ("--require-hashes", "--only-binary :all:") if flag not in line]
     if LOCKED_INSTALL_RE.search(line) is None:
@@ -219,6 +247,8 @@ def check_tree(root: Path) -> list[str]:
         if all(base in pins for base in (*spec.constrained_by, *spec.superset_of)):
             errors.extend(check_agreement(spec, pins))
         errors.extend(check_direct(root, spec, pins[spec.name]))
+    if "build" in pins:
+        errors.extend(check_build_system(root, pins["build"]))
     errors.extend(check_workflows(root))
     return errors
 

@@ -179,6 +179,27 @@ def test_a_locked_or_offline_install_passes(line: str) -> None:
     assert V.check_workflow_line("ci.yml", 7, f"          {line}") == []
 
 
+def test_an_offline_editable_install_without_no_build_isolation_fails() -> None:
+    """Offline, pip cannot fetch an isolated backend: catch it here, not mid-CI."""
+    line = "          python -m pip install --no-index --no-deps -e ."
+    errors = V.check_workflow_line("ci.yml", 7, line)
+    assert len(errors) == 1, errors
+    assert "without --no-build-isolation" in errors[0], errors
+
+
+def test_a_stricter_build_system_floor_than_the_build_lock_fails(tree: Path) -> None:
+    """[build-system] is restated by hand in build.in; drift between them must fail."""
+    _edit(tree / "pyproject.toml", '"setuptools>=75.0.0"', '"setuptools>=999.0.0"')
+    errors = V.check_tree(tree)
+    assert any("[build-system] requires setuptools>=999.0.0" in e for e in errors), errors
+
+
+def test_a_build_system_requirement_missing_from_the_build_lock_fails(tree: Path) -> None:
+    _edit(tree / "pyproject.toml", '"wheel"]', '"wheel", "hatchling"]')
+    errors = V.check_tree(tree)
+    assert any("requires hatchling, but build.lock does not lock it" in e for e in errors), errors
+
+
 def test_a_workflow_regression_is_caught_in_the_tree(tree: Path) -> None:
     workflow = tree / ".github" / "workflows" / "integration.yml"
     _edit(
