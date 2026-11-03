@@ -37,6 +37,7 @@ from packaging.utils import canonicalize_name
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_DIR = "requirements"
 WORKFLOW_DIR = ".github/workflows"
+PYPROJECT = "pyproject.toml"
 
 
 @dataclass(frozen=True)
@@ -59,11 +60,11 @@ class LockSpec:
 
 # Generation order: a lock's bases come before it.
 LOCKS: tuple[LockSpec, ...] = (
-    LockSpec("runtime", ("pyproject.toml",)),
+    LockSpec("runtime", (PYPROJECT,)),
     LockSpec("build", (f"{LOCK_DIR}/build.in",)),
     LockSpec(
         "dev",
-        ("pyproject.toml",),
+        (PYPROJECT,),
         extras=("dev",),
         constrained_by=("runtime", "build"),
         superset_of=("runtime",),
@@ -120,23 +121,30 @@ def check_agreement(spec: LockSpec, pins: dict[str, dict[str, str]]) -> list[str
     return errors
 
 
+def pyproject_requirements(path: Path, extras: tuple[str, ...]) -> list[str]:
+    """``[project].dependencies`` plus the named optional-dependency extras."""
+    project = tomllib.loads(path.read_text(encoding="utf-8"))["project"]
+    optional = project.get("optional-dependencies", {})
+    found: list[str] = list(project.get("dependencies", []))
+    for extra in extras:
+        found.extend(optional.get(extra, []))
+    return found
+
+
+def requirements_file(path: Path) -> list[str]:
+    """Requirement lines of a ``.in`` file, comments and blanks dropped."""
+    lines = (raw.split("#", 1)[0].strip() for raw in path.read_text(encoding="utf-8").splitlines())
+    return [line for line in lines if line]
+
+
 def direct_requirements(root: Path, spec: LockSpec) -> list[str]:
     """The requirement strings a lock is compiled from."""
     found: list[str] = []
     for rel in spec.inputs:
-        path = root / rel
-        if rel.endswith("pyproject.toml"):
-            project = tomllib.loads(path.read_text(encoding="utf-8"))["project"]
-            if spec.extras:
-                optional = project.get("optional-dependencies", {})
-                for extra in spec.extras:
-                    found.extend(optional.get(extra, []))
-            found.extend(project.get("dependencies", []))
+        if rel == PYPROJECT:
+            found.extend(pyproject_requirements(root / rel, spec.extras))
         else:
-            for raw in path.read_text(encoding="utf-8").splitlines():
-                line = raw.split("#", 1)[0].strip()
-                if line:
-                    found.append(line)
+            found.extend(requirements_file(root / rel))
     return found
 
 

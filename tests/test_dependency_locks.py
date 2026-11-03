@@ -162,7 +162,8 @@ def test_a_lock_that_no_longer_satisfies_its_input_fails(tree: Path) -> None:
 )
 def test_an_unlocked_workflow_install_fails(line: str) -> None:
     errors = V.check_workflow_line("ci.yml", 7, f"          {line}")
-    assert errors and "unlocked pip install" in errors[0], errors
+    assert len(errors) == 1, errors
+    assert "unlocked pip install" in errors[0], errors
 
 
 @pytest.mark.parametrize(
