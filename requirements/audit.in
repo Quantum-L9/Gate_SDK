@@ -1,0 +1,4 @@
+# Dependency CVE scanner, installed beside the dev environment it audits
+# (scripts/pip_audit_gated.sh). Compiled against dev.lock so every shared
+# package keeps the version the audited environment pins.
+pip-audit
