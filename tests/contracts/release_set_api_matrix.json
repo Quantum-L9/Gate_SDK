@@ -64,36 +64,22 @@
         {
           "module": "constellation_node_sdk",
           "symbol": "GateClient",
-          "attributes": [
-            "execute",
-            "send_to_gate",
-            "health",
-            "gate_url"
-          ]
+          "attributes": ["execute", "send_to_gate", "health", "gate_url"]
         },
         {
           "module": "constellation_node_sdk",
           "symbol": "GateHTTPError",
-          "attributes": [
-            "status_code",
-            "response_text",
-            "is_client_error",
-            "is_server_error"
-          ]
+          "attributes": ["status_code", "response_text", "is_client_error", "is_server_error"]
         },
         {
           "module": "constellation_node_sdk",
           "symbol": "GateTimeoutError",
-          "attributes": [
-            "timeout_seconds"
-          ]
+          "attributes": ["timeout_seconds"]
         },
         {
           "module": "constellation_node_sdk",
           "symbol": "GateSecurityError",
-          "attributes": [
-            "direction"
-          ]
+          "attributes": ["direction"]
         }
       ],
       "model_fields": [
@@ -147,35 +133,23 @@
       "imports": [
         {
           "module": "constellation_node_sdk.transport.packet",
-          "symbols": [
-            "TransportPacket",
-            "create_transport_packet"
-          ]
+          "symbols": ["TransportPacket", "create_transport_packet"]
         },
         {
           "module": "constellation_node_sdk.transport.provenance",
-          "symbols": [
-            "RoutingProvenance"
-          ]
+          "symbols": ["RoutingProvenance"]
         },
         {
           "module": "constellation_node_sdk.transport.hashing",
-          "symbols": [
-            "compute_transport_hash"
-          ]
+          "symbols": ["compute_transport_hash"]
         },
         {
           "module": "constellation_node_sdk.transport.hop_trace",
-          "symbols": [
-            "make_ingress_hop",
-            "make_dispatch_hop"
-          ]
+          "symbols": ["make_ingress_hop", "make_dispatch_hop"]
         },
         {
           "module": "constellation_node_sdk.security.validation",
-          "symbols": [
-            "validate_transport_packet"
-          ]
+          "symbols": ["validate_transport_packet"]
         }
       ],
       "signatures": [
@@ -210,35 +184,19 @@
         {
           "module": "constellation_node_sdk.transport.hop_trace",
           "symbol": "make_ingress_hop",
-          "keyword_parameters": [
-            "packet",
-            "node",
-            "action",
-            "status"
-          ]
+          "keyword_parameters": ["packet", "node", "action", "status"]
         },
         {
           "module": "constellation_node_sdk.transport.hop_trace",
           "symbol": "make_dispatch_hop",
-          "keyword_parameters": [
-            "packet",
-            "node",
-            "action",
-            "target_node",
-            "status"
-          ]
+          "keyword_parameters": ["packet", "node", "action", "target_node", "status"]
         }
       ],
       "members": [
         {
           "module": "constellation_node_sdk.transport.packet",
           "symbol": "TransportPacket",
-          "attributes": [
-            "derive",
-            "with_hop",
-            "model_dump_json_dict",
-            "model_validate"
-          ]
+          "attributes": ["derive", "with_hop", "model_dump_json_dict", "model_validate"]
         }
       ],
       "model_fields": [
@@ -278,11 +236,7 @@
         {
           "module": "constellation_node_sdk.transport.models",
           "symbol": "TransportLineage",
-          "fields": [
-            "parent_id",
-            "root_id",
-            "generation"
-          ]
+          "fields": ["parent_id", "root_id", "generation"]
         }
       ],
       "behaviors": [
@@ -320,51 +274,33 @@
       "imports": [
         {
           "module": "constellation_node_sdk",
-          "symbols": [
-            "LifecycleHook",
-            "NodeRuntimeConfig",
-            "create_node_app"
-          ],
+          "symbols": ["LifecycleHook", "NodeRuntimeConfig", "create_node_app"],
           "consumed_by": "app"
         },
         {
           "module": "constellation_node_sdk.runtime.handlers",
-          "symbols": [
-            "register_handler",
-            "registered_actions",
-            "clear_handlers"
-          ],
+          "symbols": ["register_handler", "registered_actions", "clear_handlers"],
           "consumed_by": "app"
         },
         {
           "module": "constellation_node_sdk.runtime.execution",
-          "symbols": [
-            "execute_transport_packet"
-          ],
+          "symbols": ["execute_transport_packet"],
           "consumed_by": "tests",
           "note": "EIE's production path reaches the runtime through create_node_app, which calls execute_transport_packet internally. The direct import appears in EIE's own tests (tests/unit/test_orchestration_layer.py, tests/contracts/tier2/test_enforcement_packet_runtime.py), so moving this symbol breaks their CI even though no app module names it."
         },
         {
           "module": "constellation_node_sdk.transport",
-          "symbols": [
-            "TransportPacket",
-            "create_transport_packet"
-          ],
+          "symbols": ["TransportPacket", "create_transport_packet"],
           "consumed_by": "app"
         },
         {
           "module": "constellation_node_sdk.transport.errors",
-          "symbols": [
-            "TransportValidationError"
-          ],
+          "symbols": ["TransportValidationError"],
           "consumed_by": "app"
         },
         {
           "module": "constellation_node_sdk.gate",
-          "symbols": [
-            "GateClient",
-            "GateClientConfig"
-          ],
+          "symbols": ["GateClient", "GateClientConfig"],
           "consumed_by": "app"
         }
       ],
@@ -391,22 +327,14 @@
         {
           "module": "constellation_node_sdk.runtime.execution",
           "symbol": "execute_transport_packet",
-          "keyword_parameters": [
-            "node_name",
-            "allowed_actions",
-            "dev_mode",
-            "require_signature"
-          ]
+          "keyword_parameters": ["node_name", "allowed_actions", "dev_mode", "require_signature"]
         }
       ],
       "members": [
         {
           "module": "constellation_node_sdk",
           "symbol": "LifecycleHook",
-          "attributes": [
-            "startup",
-            "shutdown"
-          ]
+          "attributes": ["startup", "shutdown"]
         }
       ],
       "model_fields": [

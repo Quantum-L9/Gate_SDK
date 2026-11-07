@@ -38,13 +38,7 @@
         "owner": "ceg",
         "proof": "real-sdk-aligned-utc-hash"
       },
-      "supported_actions": [
-        "match",
-        "sync",
-        "admin",
-        "outcomes",
-        "resolve"
-      ]
+      "supported_actions": ["match", "sync", "admin", "outcomes", "resolve"]
     },
     "enrichment-engine": {
       "internal_url": "http://127.0.0.1:8001",
@@ -52,10 +46,7 @@
         "owner": "eie",
         "proof": "real-sdk-aligned-utc-hash"
       },
-      "supported_actions": [
-        "converge",
-        "graph-inference-result"
-      ]
+      "supported_actions": ["converge", "graph-inference-result"]
     }
   },
   "schema": "l9.wave7.live_integration_evidence.v1",
