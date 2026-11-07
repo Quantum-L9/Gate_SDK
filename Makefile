@@ -1,37 +1,33 @@
-PYTHON ?= python
-PIP ?= pip
-PYTEST ?= pytest
+# GENERATED repository execution facade: make-v1. DO NOT EDIT.
+#
+# This file is owned by the central repository-execution tooling and is
+# reproduced byte-for-byte into each consumer's root Makefile. It defines only
+# the portable four-phase ABI and routes every phase to a repository-owned
+# leaf in Repo.mk. Repository implementation, product logic, CI orchestration,
+# and organization governance never live here.
+#
+# Regenerate from the versioned facade template with the repository-execution
+# reconcile command; make-v1 behavior is immutable once released.
+.DEFAULT_GOAL := help
+SHELL := /usr/bin/env bash
+.SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: install install-dev lint typecheck test test-unit test-integration schema validate-contracts clean
+# Composition, not isolation: the repository-owned implementation is included
+# and must exist. A repository without Repo.mk has no execution implementation
+# and fails here rather than passing silently.
+include Repo.mk
 
-install:
-	$(PIP) install -e .
+.PHONY: help setup validate check test
 
-install-dev:
-	$(PIP) install -e ".[dev]"
+help: ## Show the portable repository-execution phases
+	@awk '\
+		BEGIN { FS = ":.*## "; } \
+		/^[A-Za-z0-9_.-]+:.*## / { \
+			printf "  %-24s %s\n", $$1, $$2; \
+		}' $(MAKEFILE_LIST)
 
-lint:
-	ruff check src tests
-
-typecheck:
-	mypy src
-
-test:
-	$(PYTEST) -q
-
-test-unit:
-	$(PYTEST) -q tests/transport tests/security tests/gate tests/runtime tests/orchestrator
-
-test-integration:
-	$(PYTEST) -q tests/integration
-
-schema:
-	$(PYTHON) scripts/generate_schema.py
-
-validate-contracts:
-	$(PYTHON) scripts/validate_contracts.py
-
-clean:
-	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	rm -rf .pytest_cache .mypy_cache .ruff_cache dist build *.egg-info
+# Portable make-v1 ABI. Each phase is exactly one repository-owned leaf.
+setup: repo-setup ## Establish repository dependencies
+validate: repo-validate ## Run repository validation
+check: repo-check ## Run repository static and quality checks
+test: repo-test ## Run repository tests
