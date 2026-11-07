@@ -1,0 +1,6 @@
+# Core-owned toolchain pins: l9-ci-core .github/actions/install-consumer-ci/toolchain-lock.json
+# (main 68ed9943). Installed by Repo.mk repo-setup after .[dev] so the gate runs these exact
+# versions; Core's toolchain-alignment step reports drift from the lock.
+ruff==0.16.1
+mypy==2.3.0
+pytest==9.1.1

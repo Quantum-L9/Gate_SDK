@@ -23,10 +23,10 @@ PYTEST ?= pytest
 
 .PHONY: repo-setup repo-validate repo-check repo-test
 
-repo-setup: ## Create .venv and install the project with its dev toolchain
+repo-setup: ## Create .venv; install the project, dev extras and Core-locked ruff/mypy/pytest
 	$(BOOTSTRAP_PYTHON) -m venv $(VENV)
 	$(VENV_PYTHON) -m pip install --upgrade pip
-	$(VENV_PYTHON) -m pip install -e ".[dev]"
+	$(VENV_PYTHON) -m pip install -e ".[dev]" -r requirements-ci.txt
 
 repo-validate: ## Validate contracts and release identity (read-only)
 	$(VENV_PYTHON) scripts/validate_contracts.py
