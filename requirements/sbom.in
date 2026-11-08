@@ -1,0 +1,3 @@
+# CycloneDX SBOM generator. Compiled against runtime.lock: the SBOM job's
+# environment is the runtime dependency set plus the built wheel.
+cyclonedx-bom

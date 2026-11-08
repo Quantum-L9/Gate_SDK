@@ -13,6 +13,14 @@
 # 6 secret-scan — TruffleHog --only-verified
 # 7 build — python -m build → sdist + wheel artifact
 # ALL all-gates-passed — aggregator required by branch protection
+
+# Every install is hash-locked (issue #53, SonarCloud githubactions:S8541 /
+# S8544): --require-hashes installs from requirements/*.lock only, and
+# --only-binary :all: keeps index packages from running setup scripts. The
+# package itself installs offline (--no-index --no-deps) and builds with
+# --no-build-isolation against the locked setuptools/wheel in build.lock.
+# Regenerate locks with scripts/lock_requirements.py; scripts/validate_locks.py
+# (gate 2) fails on a stale lock or an unlocked install line.
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: ci
@@ -54,11 +62,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements/*.lock
 
-      - name: Install dev dependencies
+      - name: Install dev dependencies (hash-locked)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install --require-hashes --only-binary :all: -r requirements/build.lock
+          python -m pip install --require-hashes --only-binary :all: -r requirements/dev.lock
+          python -m pip install --no-index --no-deps --no-build-isolation -e .
+          python -m pip check
 
       - name: Ruff lint
         run: ruff check src tests scripts
@@ -95,14 +106,22 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements/*.lock
 
-      - name: Install dev dependencies
+      - name: Install dev dependencies (hash-locked)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install --require-hashes --only-binary :all: -r requirements/build.lock
+          python -m pip install --require-hashes --only-binary :all: -r requirements/dev.lock
+          python -m pip install --no-index --no-deps --no-build-isolation -e .
+          python -m pip check
 
       - name: Validate contracts
         run: python scripts/validate_contracts.py
+
+      - name: Validate dependency locks
+        # Locks agree with pyproject.toml and each other; no workflow installs
+        # anything unlocked (issue #53).
+        run: python scripts/validate_locks.py
 
       - name: Validate release identity (structural + local tags)
         # Gate_SDK owns what the moving major channel means for Gate, CEG and
@@ -132,11 +151,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements/*.lock
 
-      - name: Install dev dependencies
+      - name: Install dev dependencies (hash-locked)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install --require-hashes --only-binary :all: -r requirements/build.lock
+          python -m pip install --require-hashes --only-binary :all: -r requirements/dev.lock
+          python -m pip install --no-index --no-deps --no-build-isolation -e .
+          python -m pip check
 
       - name: Regenerate schema + check drift
         run: |
@@ -172,11 +194,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements/*.lock
 
-      - name: Install dev dependencies
+      - name: Install dev dependencies (hash-locked)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install --require-hashes --only-binary :all: -r requirements/build.lock
+          python -m pip install --require-hashes --only-binary :all: -r requirements/dev.lock
+          python -m pip install --no-index --no-deps --no-build-isolation -e .
+          python -m pip check
 
       - name: Pytest
         run: pytest -q --tb=short
@@ -202,12 +227,15 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements/*.lock
 
-      - name: Install package + audit tool
+      - name: Install package + audit tool (hash-locked)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
-          python -m pip install pip-audit
+          python -m pip install --require-hashes --only-binary :all: -r requirements/build.lock
+          python -m pip install --require-hashes --only-binary :all: -r requirements/dev.lock
+          python -m pip install --no-index --no-deps --no-build-isolation -e .
+          python -m pip install --require-hashes --only-binary :all: -r requirements/audit.lock
+          python -m pip check
 
       - name: pip-audit
         # Wrapper, not bare pip-audit: it applies the reviewed suppression list
@@ -287,15 +315,22 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements/*.lock
 
-      - name: Install build toolchain
-        run: python -m pip install --upgrade pip setuptools wheel build
+      - name: Install build toolchain (hash-locked)
+        run: |
+          python -m pip install --require-hashes --only-binary :all: -r requirements/build.lock
 
-      - name: Install package
-        run: python -m pip install -e .
+      - name: Install package (hash-locked runtime, offline editable)
+        run: |
+          python -m pip install --require-hashes --only-binary :all: -r requirements/runtime.lock
+          python -m pip install --no-index --no-deps --no-build-isolation -e .
+          python -m pip check
 
       - name: Build sdist + wheel
-        run: python -m build
+        # --no-isolation: build with the locked setuptools/wheel above, not an
+        # unhashed backend downloaded into an isolated build environment.
+        run: python -m build --no-isolation
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
