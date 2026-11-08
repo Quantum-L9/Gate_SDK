@@ -1,0 +1,8 @@
+# Build toolchain: the setuptools/wheel backend from pyproject.toml's
+# [build-system], plus the `build` frontend. CI and release builds run with
+# --no-isolation / --no-build-isolation, so the backend that builds every
+# artifact (including the published sdist and wheel) is this hash-locked one,
+# never a fresh unhashed download into an isolated build environment.
+setuptools>=75.0.0
+wheel
+build>=1.2.0

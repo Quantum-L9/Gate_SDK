@@ -8,6 +8,29 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **CI installs are hash-locked** (issue #53, SonarCloud `githubactions:S8541`
+  / `S8544`, 62 findings on main). Every workflow installs only from
+  `requirements/*.lock` with `--require-hashes --only-binary :all:`: `build`
+  (setuptools/wheel/build), `runtime`, `dev` (runtime + `[dev]`), and one lock
+  per tool (`audit`, `precommit`, `twine`, `sbom`) compiled against the lock it
+  shares an environment with, so shared packages carry one version. The
+  package installs offline (`--no-index --no-deps --no-build-isolation -e .`)
+  and every install step ends with `pip check`. `pip install --upgrade pip` is
+  gone; jobs use the interpreter's bundled pip.
+- **Builds use the locked backend.** CI and release builds run
+  `python -m build --no-isolation`, so published artifacts are no longer built
+  by an unhashed setuptools fetched at release time. The wheel and sdist are
+  content-identical to the isolated build.
+- **The release SBOM describes the built wheel.** Gate 5 installs the runtime
+  lock plus the wheel gate 4 produced, instead of an editable install, which
+  would have required the build toolchain and listed it in the SBOM.
+- `scripts/lock_requirements.py` regenerates every lock (scoped refresh;
+  `LOCK_UPGRADE_ALL=1` for a full one). `scripts/validate_locks.py` (gate 2 and
+  release gate 2) fails on a stale or disagreeing lock and on any unlocked
+  `pip install` line in a workflow. `pre-commit`'s version now lives only in
+  `requirements/precommit.in`.
+
 ## [1.3.2] — 2026-11-01
 
 ### Added

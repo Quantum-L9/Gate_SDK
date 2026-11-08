@@ -35,3 +35,18 @@ clean:
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 	rm -rf .pytest_cache .mypy_cache .ruff_cache dist build *.egg-info
+
+# The hash-locked install CI runs (issue #53). Regenerate with `make lock`.
+.PHONY: install-ci lock validate-locks
+
+install-ci:
+	$(PIP) install --require-hashes --only-binary :all: -r requirements/build.lock
+	$(PIP) install --require-hashes --only-binary :all: -r requirements/dev.lock
+	$(PIP) install --no-index --no-deps --no-build-isolation -e .
+	$(PIP) check
+
+lock:
+	$(PYTHON) scripts/lock_requirements.py
+
+validate-locks:
+	$(PYTHON) scripts/validate_locks.py

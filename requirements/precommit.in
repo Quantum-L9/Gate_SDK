@@ -1,0 +1,4 @@
+# pre-commit itself (hook environments are pre-commit's own, pinned by
+# .pre-commit-config.yaml revs). Compiled against dev.lock because
+# pre-commit-run installs it beside the dev environment.
+pre-commit==3.7.1
