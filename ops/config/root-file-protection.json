@@ -24,6 +24,8 @@
     "regenerable": "rule=regenerable"
   },
   "protected_files": [
+    { "path": ".biomeignore", "tier": "managed", "rule": "managed" },
+    { "path": ".editorconfig", "tier": "managed", "rule": "managed" },
     { "path": ".env.example", "tier": "managed", "rule": "managed" },
     { "path": ".gitignore", "tier": "managed", "rule": "managed" },
     { "path": ".pre-commit-config.yaml", "tier": "canonical", "rule": "additive_only" },
@@ -39,6 +41,7 @@
     { "path": "PR_FINDINGS_BRIEF.md", "tier": "managed", "rule": "managed" },
     { "path": "README.md", "tier": "managed", "rule": "managed" },
     { "path": "SECURITY.md", "tier": "canonical", "rule": "additive_only" },
+    { "path": "biome.json", "tier": "managed", "rule": "managed" },
     { "path": "pyproject.toml", "tier": "canonical", "rule": "additive_only" }
   ],
   "exempt_root_files": []

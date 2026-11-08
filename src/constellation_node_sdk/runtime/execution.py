@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from typing import cast
 
 from constellation_node_sdk.security.signing import sign_transport_packet
 from constellation_node_sdk.security.validation import validate_transport_packet
@@ -191,6 +192,24 @@ async def execute_transport_packet(
     return response_packet
 
 
+def _structured_problem(error: Exception) -> tuple[str, str] | None:
+    """Return ``(code, message)`` when *error* carries an explicit application problem.
+
+    The contract is an ``error.problem`` mapping whose ``code`` is a non-empty string and
+    whose ``message`` is a string the handler has declared safe for the caller. Anything
+    else returns ``None`` so the generic class-name fallback applies; no code is inferred.
+    """
+    problem: object = getattr(error, "problem", None)
+    if not isinstance(problem, Mapping):
+        return None
+    fields = cast(Mapping[object, object], problem)
+    code = fields.get("code")
+    message = fields.get("message")
+    if not isinstance(code, str) or not code or not isinstance(message, str):
+        return None
+    return code, message
+
+
 def create_error_transport_packet(
     packet: TransportPacket,
     error: Exception,
@@ -203,7 +222,12 @@ def create_error_transport_packet(
     expose_internal_errors: bool = False,
 ) -> TransportPacket:
     normalized_node_name = node_name.strip().lower()
-    client_message = str(error) if expose_internal_errors else error.__class__.__name__
+    problem = _structured_problem(error)
+    if problem is not None:
+        error_code, client_message = problem
+    else:
+        error_code = error.__class__.__name__
+        client_message = str(error) if expose_internal_errors else error_code
 
     response_packet = packet.derive(
         packet_type="failure",
@@ -212,7 +236,7 @@ def create_error_transport_packet(
         reply_to=normalized_node_name,
         payload={
             "status": "failed",
-            "error": error.__class__.__name__,
+            "error": error_code,
             "message": client_message,
             "packet_id": str(packet.header.packet_id),
         },
@@ -224,7 +248,7 @@ def create_error_transport_packet(
             node=normalized_node_name,
             action=response_packet.header.action,
             status="failed",
-            error_code=error.__class__.__name__,
+            error_code=error_code,
             error_message=str(error) if expose_internal_errors else client_message,
         )
     )
