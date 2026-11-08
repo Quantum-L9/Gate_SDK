@@ -40,6 +40,7 @@
     { "path": "Makefile", "tier": "canonical", "rule": "additive_only" },
     { "path": "PR_FINDINGS_BRIEF.md", "tier": "managed", "rule": "managed" },
     { "path": "README.md", "tier": "managed", "rule": "managed" },
+    { "path": "Repo.mk", "tier": "canonical", "rule": "additive_only" },
     { "path": "SECURITY.md", "tier": "canonical", "rule": "additive_only" },
     { "path": "biome.json", "tier": "managed", "rule": "managed" },
     { "path": "pyproject.toml", "tier": "canonical", "rule": "additive_only" }
