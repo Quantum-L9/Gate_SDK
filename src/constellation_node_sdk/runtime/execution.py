@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Callable, Mapping
-from typing import cast
+from typing import Final, cast
 
 from constellation_node_sdk.security.signing import sign_transport_packet
 from constellation_node_sdk.security.validation import validate_transport_packet
@@ -163,12 +163,19 @@ async def execute_transport_packet(
     }:
         payload_status = "completed"
 
+    hop_error_code: str | None = None
+    hop_error_message: str | None = None
+    if payload_status == "failed":
+        hop_error_code, hop_error_message = _declared_result_failure(response_packet.payload)
+
     response_packet = response_packet.with_hop(
         make_response_hop(
             packet=response_packet,
             node=normalized_node_name,
             action=response_packet.header.action,
             status=payload_status,
+            error_code=hop_error_code,
+            error_message=hop_error_message,
         )
     )
 
@@ -190,6 +197,33 @@ async def execute_transport_packet(
         )
 
     return response_packet
+
+
+HANDLER_REPORTED_FAILURE: Final = "handler_reported_failure"
+_MAX_HOP_ERROR_CODE_CHARS: Final = 128
+
+
+def _declared_result_failure(payload: Mapping[str, object]) -> tuple[str, str | None]:
+    """Return the hop ``(error_code, error_message)`` for a handler's ``status: failed`` result.
+
+    A failed hop must carry an error code or message. The handler's result is a typed
+    response, not a transport failure, so the payload is carried through untouched; only
+    the hop records the failure. The code is taken from the result's declared ``code``
+    (or the SDK failure-payload ``error``) when it is a non-empty string no longer than
+    ``_MAX_HOP_ERROR_CODE_CHARS``; otherwise the hop carries the fixed
+    ``handler_reported_failure`` marker.
+
+    The domain ``message`` is never copied into the hop. It already travels in the
+    payload, and duplicating an arbitrary-length string into ``hop_trace`` could push a
+    response that fits the packet size ceiling over it and turn a typed result back into
+    a transport failure. Hop metadata stays bounded.
+    """
+    code = payload.get("code")
+    if not isinstance(code, str) or not code.strip():
+        code = payload.get("error")
+    if isinstance(code, str) and code.strip() and len(code) <= _MAX_HOP_ERROR_CODE_CHARS:
+        return code, None
+    return HANDLER_REPORTED_FAILURE, None
 
 
 def _structured_problem(error: Exception) -> tuple[str, str] | None:
