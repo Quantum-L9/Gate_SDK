@@ -91,7 +91,8 @@ async def test_typed_failed_handler_result_is_a_signed_response_with_payload_int
     assert hop.direction == "response"
     assert hop.status == "failed"
     assert hop.error_code == "INVALID_REQUEST"
-    assert hop.error_message == _PROBLEM["message"]
+    # The domain message stays in the payload only; hop metadata is bounded.
+    assert hop.error_message is None
     assert hop.packet_id == response.header.packet_id
 
     # Signed, verifiable, and the hop is excluded from the transport hash.
@@ -122,6 +123,31 @@ async def test_failed_result_without_declared_code_records_a_fixed_hop_marker() 
     assert hop.status == "failed"
     assert hop.error_code == "handler_reported_failure"
     assert hop.error_message is None
+    clear_handlers()
+
+
+@pytest.mark.asyncio
+async def test_large_domain_message_is_not_duplicated_into_the_hop() -> None:
+    """A failed result whose payload fits the packet ceiling must still fit with its hop."""
+    clear_handlers()
+    big_message = "x" * 200_000
+
+    @register_handler("state.create")
+    async def handle_create(_tenant: str, _payload: dict[str, Any]) -> dict[str, Any]:
+        return {"status": "failed", "code": "E" * 500, "message": big_message}
+
+    response = await _execute(_signed_request())
+
+    assert response.header.packet_type == "response"
+    assert response.payload["message"] == big_message
+    hop = response.hop_trace[0]
+    assert hop.status == "failed"
+    # An over-long declared code is not copied either: the fixed marker is used.
+    assert hop.error_code == "handler_reported_failure"
+    assert hop.error_message is None
+    validate_transport_packet(
+        response, key_resolver=_KEYS, require_signature=True, replay_enabled=False
+    )
     clear_handlers()
 
 
