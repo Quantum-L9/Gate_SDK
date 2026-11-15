@@ -138,11 +138,14 @@ def test_a_declared_dependency_missing_from_its_lock_fails(tree: Path) -> None:
 
 
 def test_a_lock_that_no_longer_satisfies_its_input_fails(tree: Path) -> None:
-    _edit(tree / "requirements" / "precommit.in", "pre-commit==3.7.1", "pre-commit==9.9.9")
+    # Read the committed pin rather than hardcoding it: a routine pre-commit
+    # bump (input and lock moved together) must not turn this into fixture drift.
+    locked = _pin(tree / "requirements" / "precommit.lock", "pre-commit")
+    _edit(tree / "requirements" / "precommit.in", locked, "pre-commit==9.9.9")
     errors = V.check_tree(tree)
-    assert any(
-        "precommit.lock: locks pre-commit==3.7.1, which does not satisfy" in e for e in errors
-    ), errors
+    assert any(f"precommit.lock: locks {locked}, which does not satisfy" in e for e in errors), (
+        errors
+    )
 
 
 # ------------------------------------------------------------ workflow guard
