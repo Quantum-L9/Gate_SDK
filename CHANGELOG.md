@@ -20,7 +20,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   selection. `coverage.yml` keeps an 80% floor on pull requests, applied to the
   changed lines with `diff-cover` against the PR base. The whole suite with the
   whole-repository `--cov-fail-under=80` now runs on push to main, nightly and
-  `workflow_dispatch`. `diff-cover` joins the `[dev]` extra and `dev.lock`.
+  `workflow_dispatch`. `diff-cover` gets its own hash lock,
+  `requirements/coverage.lock`, compiled against `dev.lock`.
 
 ### Changed
 - **CI installs are hash-locked** (issue #53, SonarCloud `githubactions:S8541`
