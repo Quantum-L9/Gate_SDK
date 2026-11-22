@@ -17,6 +17,9 @@ import base64
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
 from constellation_node_sdk.transport.errors import TransportAuthenticationError
 
 _SUPPORTED_ALGORITHMS = frozenset({"hmac-sha256", "ed25519"})
@@ -130,3 +133,31 @@ def resolve_bound_verifying_key(
             f"algorithm {binding!r} bound to signing key id {key_id!r}"
         )
     return coerce_key_bytes(material)
+
+
+def own_verifying_key(
+    signing_key: str | bytes | None, signing_algorithm: str | None
+) -> str | bytes | None:
+    """
+    The material that verifies a signature this party made with ``signing_key``.
+
+    For HMAC that is the shared secret itself, returned unchanged. For ed25519 it
+    is the public key derived from the private key: a private key is never
+    verifying material, so an ed25519 party resolving its own key id to its
+    private key could not validate a single packet it had just signed.
+    """
+    if signing_key is None:
+        return None
+    if _normalize_algorithm(signing_algorithm) != "ed25519":
+        return signing_key
+    raw = coerce_key_bytes(signing_key)
+    if raw.startswith(b"-----BEGIN"):
+        loaded = load_pem_private_key(raw, password=None)
+        if not isinstance(loaded, Ed25519PrivateKey):
+            raise TransportAuthenticationError("PEM private key is not Ed25519")
+        private_key = loaded
+    elif len(raw) == 32:
+        private_key = Ed25519PrivateKey.from_private_bytes(raw)
+    else:
+        raise TransportAuthenticationError("unsupported ed25519 private key format")
+    return private_key.public_key().public_bytes_raw()

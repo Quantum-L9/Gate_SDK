@@ -23,6 +23,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   material with no `key_algorithm` keeps its previous behaviour; callers that
   verify ed25519 participants must pass a binding.
 
+### Fixed
+- **An ed25519 `GateClient` can send (D-2).** `GateClientConfig` and
+  `GateDispatchTransportConfig` resolved their own key id to `signing_key`,
+  which under ed25519 is the private key, so outbound validation of the packet
+  just signed always failed with `invalid ed25519 transport signature`. The own
+  key id now resolves to the public key derived from the private key; HMAC
+  still resolves to the shared secret.
+- **One ed25519 env layout for client and runtime (D-3).** With
+  `L9_SIGNING_ALGORITHM=ed25519`, `get_gate_client_config_from_env` reads the
+  private key from `L9_SIGNING_PRIVATE_KEY`, the variable the worker runtime
+  reads, and refuses `L9_SIGNING_KEY`/`L9_SIGNING_SECRET` as the runtime does.
+  HMAC and unset-algorithm configurations read `L9_SIGNING_KEY` as before.
+
 ### Changed
 - **CI installs are hash-locked** (issue #53, SonarCloud `githubactions:S8541`
   / `S8544`, 62 findings on main). Every workflow installs only from

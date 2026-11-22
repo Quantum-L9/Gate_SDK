@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from constellation_node_sdk.transport.key_binding import own_verifying_key
+
 
 def _env_optional_int(name: str) -> int | None:
     raw = os.getenv(name)
@@ -37,6 +39,27 @@ def _env_verifying_keys(name: str) -> dict[str, str]:
             raise ValueError(f"{name} keys and values must all be strings")
         result[key_id] = key_value
     return result
+
+
+def _env_signing_key(signing_algorithm: str | None) -> str | None:
+    """
+    The client's signing material, from the same variables the worker runtime reads.
+
+    HMAC (and an unset algorithm) reads the shared secret from ``L9_SIGNING_KEY``
+    / ``L9_SIGNING_SECRET``, unchanged. ed25519 reads the private key from
+    ``L9_SIGNING_PRIVATE_KEY``, which is where ``get_runtime_config`` reads it,
+    so a node that is both a worker and an egress client has one layout. Like
+    the runtime, ed25519 refuses ``L9_SIGNING_KEY``: a value there is either a
+    misplaced private key or an HMAC secret that must not be signed with.
+    """
+    if signing_algorithm is not None and signing_algorithm.strip().lower() == "ed25519":
+        if os.getenv("L9_SIGNING_KEY") or os.getenv("L9_SIGNING_SECRET"):
+            raise ValueError(
+                "L9_SIGNING_KEY/L9_SIGNING_SECRET must not be used with ed25519; "
+                "set L9_SIGNING_PRIVATE_KEY"
+            )
+        return os.getenv("L9_SIGNING_PRIVATE_KEY") or None
+    return os.getenv("L9_SIGNING_KEY") or os.getenv("L9_SIGNING_SECRET")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -122,7 +145,10 @@ class GateClientConfig(BaseModel):
         """
         problems: list[str] = []
         if self.signing_key is None:
-            problems.append("no signing key (L9_SIGNING_KEY) is configured")
+            problems.append(
+                "no signing key (L9_SIGNING_KEY, or L9_SIGNING_PRIVATE_KEY for ed25519) "
+                "is configured"
+            )
         if self.signing_key is not None and self.signing_key_id is None:
             problems.append("a signing key is configured without a key id (L9_SIGNING_KEY_ID)")
         if self.signing_key is not None and self.signing_algorithm is None:
@@ -142,12 +168,10 @@ class GateClientConfig(BaseModel):
             return None
         if key_id in self.verifying_keys:
             return self.verifying_keys[key_id]
-        if (
-            self.signing_key_id is not None
-            and key_id == self.signing_key_id
-            and self.signing_key is not None
-        ):
-            return self.signing_key
+        if self.signing_key_id is not None and key_id == self.signing_key_id:
+            # ed25519: the public key derived from our private key, never the
+            # private key itself. HMAC: the shared secret, as before.
+            return own_verifying_key(self.signing_key, self.signing_algorithm)
         return None
 
 
@@ -204,7 +228,11 @@ def get_gate_client_config_from_env(**overrides: Any) -> GateClientConfig:
         ),
         "timeout_seconds": lambda: float(os.getenv("GATE_CLIENT_TIMEOUT_SECONDS", "30.0")),
         "require_signature": lambda: _env_bool("L9_REQUIRE_SIGNATURE", False),
-        "signing_key": lambda: os.getenv("L9_SIGNING_KEY") or os.getenv("L9_SIGNING_SECRET"),
+        "signing_key": lambda: _env_signing_key(
+            overrides["signing_algorithm"]
+            if "signing_algorithm" in overrides
+            else os.getenv("L9_SIGNING_ALGORITHM")
+        ),
         "signing_key_id": lambda: os.getenv("L9_SIGNING_KEY_ID"),
         "signing_algorithm": lambda: os.getenv("L9_SIGNING_ALGORITHM"),
         "verify_response_signatures": lambda: _env_bool("L9_REQUIRE_SIGNATURE", False),

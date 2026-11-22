@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from constellation_node_sdk.transport.key_binding import own_verifying_key
+
 
 class GateDispatchTransportConfig(BaseModel):
     """
@@ -68,10 +70,8 @@ class GateDispatchTransportConfig(BaseModel):
             return None
         if key_id in self.verifying_keys:
             return self.verifying_keys[key_id]
-        if (
-            self.signing_key_id is not None
-            and key_id == self.signing_key_id
-            and self.signing_key is not None
-        ):
-            return self.signing_key
+        if self.signing_key_id is not None and key_id == self.signing_key_id:
+            # ed25519: the public key derived from our private key, never the
+            # private key itself. HMAC: the shared secret, as before.
+            return own_verifying_key(self.signing_key, self.signing_algorithm)
         return None
