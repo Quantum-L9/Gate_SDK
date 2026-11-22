@@ -58,10 +58,14 @@ jobs:
       - name: Run bounded pytest with coverage (pull request)
         if: github.event_name == 'pull_request'
         env:
+          # --cov-fail-under=90 is the floor for the bounded set alone, measured
+          # at 90.9% (3094 statements, 281 missed) when make-v2 was adopted. It
+          # is in addition to the 80% changed-line gate below, not instead of it.
           PYTEST_ADDOPTS: >-
             --cov=constellation_node_sdk
             --cov-report=xml:coverage.xml
             --cov-report=term-missing
+            --cov-fail-under=90
         run: make test-fast
 
       - name: Gate coverage of changed lines at 80% (pull request)

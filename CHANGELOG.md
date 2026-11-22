@@ -18,7 +18,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `make test` remains the whole suite.
 - **Pull-request CI runs `make test-fast`.** `ci.yml` gate 4 runs the bounded
   selection. `coverage.yml` keeps an 80% floor on pull requests, applied to the
-  changed lines with `diff-cover` against the PR base. The whole suite with the
+  changed lines with `diff-cover` against the PR base, and the bounded run
+  itself must reach 90% (measured 90.9% on adoption). The whole suite with the
   whole-repository `--cov-fail-under=80` now runs nightly and on
   `workflow_dispatch` only. `diff-cover` gets its own hash lock,
   `requirements/coverage.lock`, compiled against `dev.lock`.
