@@ -12,13 +12,12 @@ HMAC and ed25519 signatures still verify.
 from __future__ import annotations
 
 import base64
+import hmac
 import os
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-import constellation_node_sdk.security.verification as verification_module
-import constellation_node_sdk.transport.hop_trace as hop_trace_module
 from constellation_node_sdk import VerifyingKey
 from constellation_node_sdk.runtime.execution import execute_transport_packet
 from constellation_node_sdk.runtime.handlers import register_handler
@@ -75,13 +74,13 @@ def _forged_with_random_secret(destination: str = "gate") -> TransportPacket:
 def no_hmac(monkeypatch: pytest.MonkeyPatch) -> list[bytes]:
     """Record every HMAC computed (the hmac module is shared, so this includes signing)."""
     calls: list[bytes] = []
-    real_new = verification_module.hmac.new
+    real_new = hmac.new
 
     def recording_new(key: bytes, *args: object, **kwargs: object) -> object:
         calls.append(key)
         return real_new(key, *args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(verification_module.hmac, "new", recording_new)
+    monkeypatch.setattr(hmac, "new", recording_new)
     return calls
 
 
@@ -105,12 +104,11 @@ def test_forged_hmac_with_public_key_is_refused_by_verifying_key_binding(
 ) -> None:
     _, public_b64 = _ed25519_identity()
     forged = _forged_with_public_key(public_b64)
+    resolver = {ED_KEY_ID: VerifyingKey("ed25519", public_b64)}
     no_hmac.clear()  # forging computed one; only verification is under test
 
     with pytest.raises(TransportAuthenticationError, match="does not match the algorithm"):
-        verify_transport_packet_signature(
-            forged, key_resolver={ED_KEY_ID: VerifyingKey("ed25519", public_b64)}
-        )
+        verify_transport_packet_signature(forged, key_resolver=resolver)
     assert no_hmac == []
 
 
@@ -220,22 +218,21 @@ def test_ed25519_packet_against_hmac_bound_key_is_refused() -> None:
 def test_conflicting_bindings_are_refused() -> None:
     _, public_b64 = _ed25519_identity()
     forged = _forged_with_public_key(public_b64)
+    resolver = {ED_KEY_ID: VerifyingKey("ed25519", public_b64)}
 
     with pytest.raises(TransportAuthenticationError, match="conflicting algorithm bindings"):
         verify_transport_packet_signature(
-            forged,
-            key_resolver={ED_KEY_ID: VerifyingKey("ed25519", public_b64)},
-            key_algorithm="hmac-sha256",
+            forged, key_resolver=resolver, key_algorithm="hmac-sha256"
         )
 
 
 def test_unsupported_caller_binding_is_refused() -> None:
     _, public_b64 = _ed25519_identity()
+    forged = _forged_with_public_key(public_b64)
+
     with pytest.raises(TransportAuthenticationError, match="unsupported bound key algorithm"):
         verify_transport_packet_signature(
-            _forged_with_public_key(public_b64),
-            key_resolver={ED_KEY_ID: public_b64},
-            key_algorithm="rsa",
+            forged, key_resolver={ED_KEY_ID: public_b64}, key_algorithm="rsa"
         )
 
 
@@ -259,20 +256,18 @@ def test_forged_hop_signature_with_public_key_is_refused(monkeypatch: pytest.Mon
         algorithm="hmac-sha256",
     )
     calls: list[bytes] = []
-    real_new = hop_trace_module.hmac.new
+    real_new = hmac.new
 
     def recording_new(key: bytes, *args: object, **kwargs: object) -> object:
         calls.append(key)
         return real_new(key, *args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(hop_trace_module.hmac, "new", recording_new)
+    monkeypatch.setattr(hmac, "new", recording_new)
 
     with pytest.raises(TransportAuthenticationError, match="hop signature algorithm"):
         verify_hop_signature(hop, key_resolver={ED_KEY_ID: public_b64}, key_algorithm="ed25519")
+    hopped = packet.with_hop(hop)
+    bound_resolver = {ED_KEY_ID: VerifyingKey("ed25519", public_b64)}
     with pytest.raises(TransportAuthenticationError, match="hop signature algorithm"):
-        validate_hop_trace(
-            packet.with_hop(hop),
-            verify_hop_signatures=True,
-            hop_key_resolver={ED_KEY_ID: VerifyingKey("ed25519", public_b64)},
-        )
+        validate_hop_trace(hopped, verify_hop_signatures=True, hop_key_resolver=bound_resolver)
     assert calls == []

@@ -345,11 +345,14 @@ def validate_hop_trace(
         ):
             raise TransportValidationError("hop timestamps must be non-decreasing")
 
-        if verify_hop_signatures and hop.hop_signature is not None:
-            if not verify_hop_signature(
+        if (
+            verify_hop_signatures
+            and hop.hop_signature is not None
+            and not verify_hop_signature(
                 hop, key_resolver=hop_key_resolver, key_algorithm=hop_key_algorithm
-            ):
-                raise TransportAuthenticationError("invalid hop signature")
+            )
+        ):
+            raise TransportAuthenticationError("invalid hop signature")
 
         previous_hash = hop.hop_hash
         previous_timestamp = hop.timestamp
