@@ -50,6 +50,7 @@ from constellation_node_sdk.runtime import (
     run_preflight,
 )
 from constellation_node_sdk.security import (
+    VerifyingKey,
     recompute_transport_core,
     sign_transport_packet,
     validate_derived_transport_packet,
@@ -170,4 +171,5 @@ __all__ = [
     "validate_outbound_gate_packet",
     "validate_transport_packet",
     "verify_transport_packet_signature",
+    "VerifyingKey",
 ]

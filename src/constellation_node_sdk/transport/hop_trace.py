@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
-from collections.abc import Callable, Mapping
 from datetime import datetime
 from uuid import uuid4
 
@@ -17,43 +15,13 @@ from constellation_node_sdk.transport.errors import (
     TransportValidationError,
 )
 from constellation_node_sdk.transport.hashing import canonical_json
+from constellation_node_sdk.transport.key_binding import (
+    KeyResolver,
+    coerce_key_bytes,
+    resolve_bound_verifying_key,
+)
 from constellation_node_sdk.transport.models import TransportHop, ensure_utc, utc_now
 from constellation_node_sdk.transport.packet import TransportPacket
-
-
-def _coerce_bytes(value: str | bytes) -> bytes:
-    if isinstance(value, bytes):
-        return value
-    normalized = value.strip()
-    if normalized.startswith("-----BEGIN"):
-        return normalized.encode("utf-8")
-    try:
-        return base64.b64decode(normalized, validate=True)
-    except Exception:
-        return normalized.encode("utf-8")
-
-
-def _resolve_key(
-    key_resolver: Callable[[str | None], str | bytes | None]
-    | Mapping[str, str | bytes]
-    | str
-    | bytes
-    | None,
-    key_id: str | None,
-) -> bytes | None:
-    if key_resolver is None:
-        return None
-    if isinstance(key_resolver, (bytes, str)):
-        return _coerce_bytes(key_resolver)
-    if callable(key_resolver):
-        value = key_resolver(key_id)
-    else:
-        if key_id is None:
-            return None
-        value = key_resolver.get(key_id)
-    if value is None:
-        return None
-    return _coerce_bytes(value)
 
 
 def _load_ed25519_private_key(raw: bytes) -> Ed25519PrivateKey:
@@ -114,7 +82,7 @@ def sign_hop(
     algorithm: str,
 ) -> TransportHop:
     normalized_algorithm = algorithm.strip().lower()
-    raw_key = _coerce_bytes(key)
+    raw_key = coerce_key_bytes(key)
 
     if normalized_algorithm == "hmac-sha256":
         signature = hmac.new(raw_key, hop.hop_hash.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -138,16 +106,26 @@ def sign_hop(
 def verify_hop_signature(
     hop: TransportHop,
     *,
-    key_resolver: Callable[[str | None], str | bytes | None]
-    | Mapping[str, str | bytes]
-    | str
-    | bytes
-    | None,
+    key_resolver: KeyResolver,
+    key_algorithm: str | None = None,
 ) -> bool:
+    """
+    Verify one hop signature against its hop_hash.
+
+    ``key_algorithm`` (or a :class:`VerifyingKey` from the resolver) binds the
+    hop signing key to one algorithm; a hop declaring another is refused before
+    any cryptographic check.
+    """
     if hop.hop_signature is None or hop.hop_signature_algorithm is None:
         return False
 
-    key = _resolve_key(key_resolver, hop.hop_signing_key_id)
+    key = resolve_bound_verifying_key(
+        key_resolver,
+        hop.hop_signing_key_id,
+        declared_algorithm=hop.hop_signature_algorithm,
+        key_algorithm=key_algorithm,
+        subject="hop",
+    )
     if key is None:
         raise TransportAuthenticationError(
             "no verifying key available for hop signature verification"
@@ -339,11 +317,8 @@ def validate_hop_trace(
     packet: TransportPacket,
     *,
     verify_hop_signatures: bool = False,
-    hop_key_resolver: Callable[[str | None], str | bytes | None]
-    | Mapping[str, str | bytes]
-    | str
-    | bytes
-    | None = None,
+    hop_key_resolver: KeyResolver = None,
+    hop_key_algorithm: str | None = None,
     require_monotonic_timestamps: bool = True,
 ) -> None:
     previous_hash: str | None = None
@@ -371,7 +346,9 @@ def validate_hop_trace(
             raise TransportValidationError("hop timestamps must be non-decreasing")
 
         if verify_hop_signatures and hop.hop_signature is not None:
-            if not verify_hop_signature(hop, key_resolver=hop_key_resolver):
+            if not verify_hop_signature(
+                hop, key_resolver=hop_key_resolver, key_algorithm=hop_key_algorithm
+            ):
                 raise TransportAuthenticationError("invalid hop signature")
 
         previous_hash = hop.hop_hash

@@ -8,6 +8,21 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **A signing key id is bound to exactly one signature algorithm (D-1).**
+  `verify_transport_packet_signature` used to take its algorithm from the
+  packet's own `security.signature_algorithm`, so a packet declaring
+  `hmac-sha256` under an ed25519 key id was verified with that key's *public*
+  bytes as the HMAC secret: anyone could forge any ed25519 participant.
+  Verification now accepts a binding — `key_algorithm=` for raw material, or a
+  `VerifyingKey(algorithm, material)` returned by the resolver — and refuses a
+  declared algorithm that differs from it before any cryptographic check. The
+  same binding covers hop signatures (`hop_key_algorithm=`). `GateClient`, the
+  Gate dispatch transport and the worker runtime bind every key they resolve to
+  their configured `signing_algorithm`. A resolver returning unbound raw
+  material with no `key_algorithm` keeps its previous behaviour; callers that
+  verify ed25519 participants must pass a binding.
+
 ### Changed
 - **CI installs are hash-locked** (issue #53, SonarCloud `githubactions:S8541`
   / `S8544`, 62 findings on main). Every workflow installs only from

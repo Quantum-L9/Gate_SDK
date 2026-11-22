@@ -98,6 +98,7 @@ async def execute_transport_packet(
     validate_transport_packet(
         packet,
         key_resolver=key_resolver,
+        key_algorithm=signing_algorithm,
         require_signature=require_signature,
         max_packet_bytes=max_packet_bytes,
         max_hop_depth=max_hop_depth,
@@ -115,6 +116,7 @@ async def execute_transport_packet(
         dev_mode=dev_mode,
         verify_hop_signatures=verify_hop_signatures,
         hop_key_resolver=key_resolver,
+        hop_key_algorithm=signing_algorithm,
     )
 
     handler = get_handler(packet.header.action)

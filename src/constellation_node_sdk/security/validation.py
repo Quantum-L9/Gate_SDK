@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import ipaddress
 import json
-from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
-from constellation_node_sdk.security.verification import verify_transport_packet_signature
+from constellation_node_sdk.security.verification import (
+    KeyResolver,
+    verify_transport_packet_signature,
+)
 from constellation_node_sdk.transport.errors import (
     PacketSizeError,
     SchemaVersionError,
@@ -53,11 +55,8 @@ def validate_derived_transport_packet(parent: TransportPacket, child: TransportP
 def validate_transport_packet(
     packet: TransportPacket,
     *,
-    key_resolver: Callable[[str | None], str | bytes | None]
-    | Mapping[str, str | bytes]
-    | str
-    | bytes
-    | None = None,
+    key_resolver: KeyResolver = None,
+    key_algorithm: str | None = None,
     require_signature: bool = False,
     max_packet_bytes: int = 262_144,
     max_hop_depth: int = 64,
@@ -75,11 +74,8 @@ def validate_transport_packet(
     now: datetime | None = None,
     dev_mode: bool = False,
     verify_hop_signatures: bool = False,
-    hop_key_resolver: Callable[[str | None], str | bytes | None]
-    | Mapping[str, str | bytes]
-    | str
-    | bytes
-    | None = None,
+    hop_key_resolver: KeyResolver = None,
+    hop_key_algorithm: str | None = None,
     require_monotonic_hop_timestamps: bool = True,
 ) -> None:
     current_time = (now or datetime.now(UTC)).astimezone(UTC)
@@ -160,13 +156,16 @@ def validate_transport_packet(
             raise TransportAuthenticationError("signature required but not present")
     else:
         if not (dev_mode and key_resolver is None):
-            if not verify_transport_packet_signature(packet, key_resolver=key_resolver):
+            if not verify_transport_packet_signature(
+                packet, key_resolver=key_resolver, key_algorithm=key_algorithm
+            ):
                 raise TransportAuthenticationError("invalid transport signature")
 
     validate_hop_trace(
         packet,
         verify_hop_signatures=verify_hop_signatures,
         hop_key_resolver=hop_key_resolver,
+        hop_key_algorithm=hop_key_algorithm,
         require_monotonic_timestamps=require_monotonic_hop_timestamps,
     )
 
