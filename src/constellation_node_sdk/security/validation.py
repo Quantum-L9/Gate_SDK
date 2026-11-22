@@ -154,12 +154,10 @@ def validate_transport_packet(
     if packet.security.signature is None:
         if (require_signature or packet.security.classification == "restricted") and not dev_mode:
             raise TransportAuthenticationError("signature required but not present")
-    else:
-        if not (dev_mode and key_resolver is None):
-            if not verify_transport_packet_signature(
-                packet, key_resolver=key_resolver, key_algorithm=key_algorithm
-            ):
-                raise TransportAuthenticationError("invalid transport signature")
+    elif not (dev_mode and key_resolver is None) and not verify_transport_packet_signature(
+        packet, key_resolver=key_resolver, key_algorithm=key_algorithm
+    ):
+        raise TransportAuthenticationError("invalid transport signature")
 
     validate_hop_trace(
         packet,
