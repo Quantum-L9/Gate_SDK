@@ -9,6 +9,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- **make-v2 repository execution.** `.l9/repo-workflow.json` declares the
+  `make-v2` facade (phases `setup validate check test-fast test`) and
+  `Makefile` is regenerated from l9-ci-core. `Repo.mk` adds `repo-test-fast`,
+  a bounded literal pytest selection of every suite that exercises `src/`
+  (all package unit tests plus the contract, lock and release-identity
+  checks); `tests/packaging` and `tests/integration` stay out of it.
+  `make test` remains the whole suite.
+- **Pull-request CI runs `make test-fast`.** `ci.yml` gate 4 runs the bounded
+  selection. `coverage.yml` keeps an 80% floor on pull requests, applied to the
+  changed lines with `diff-cover` against the PR base. The whole suite with the
+  whole-repository `--cov-fail-under=80` now runs on push to main, nightly and
+  `workflow_dispatch`. `diff-cover` joins the `[dev]` extra and `dev.lock`.
+
+### Changed
 - **CI installs are hash-locked** (issue #53, SonarCloud `githubactions:S8541`
   / `S8544`, 62 findings on main). Every workflow installs only from
   `requirements/*.lock` with `--require-hashes --only-binary :all:`: `build`

@@ -61,19 +61,24 @@ validate-locks:
 	$(PYTHON) scripts/validate_locks.py
 
 # ---------------------------------------------------------------------------
-# Repository Execution V2 leaves (make-v1 facade phases)
+# Repository Execution V2 leaves (make-v2 facade phases)
 #
 # Each leaf mirrors a ci.yml gate and runs every tool through the repository
 # virtualenv interpreter, so the phase result never depends on PATH.
 #   setup    -> hash-locked install, same commands as every ci.yml gate
 #   validate -> gate 2 (contracts, locks, release identity)
 #   check    -> gate 1 (ruff lint, ruff format check, mypy)
-#   test     -> gate 4 (pytest)
+#   test-fast-> gate 4 on pull requests: the bounded literal selection below
+#   test     -> the whole suite (push to main, nightly, dispatch, local)
 # ---------------------------------------------------------------------------
 REPO_VENV := $(CURDIR)/.venv
 REPO_PYTHON := $(REPO_VENV)/bin/python
 
-.PHONY: repo-setup repo-validate repo-check repo-test
+# CI jobs install into the runner interpreter rather than .venv, so the test
+# leaves fall back to it when the repository virtualenv does not exist.
+TEST_PYTHON := $(if $(wildcard $(REPO_PYTHON)),$(REPO_PYTHON),python)
+
+.PHONY: repo-setup repo-validate repo-check repo-test repo-test-fast
 
 repo-setup: ## Create .venv and install the hash-locked dev toolchain (ci.yml install step)
 	test -x "$(REPO_PYTHON)" || python3 -m venv "$(REPO_VENV)"
@@ -89,5 +94,14 @@ repo-check: ## ci.yml gate 1: ruff lint, ruff format check, mypy
 	"$(REPO_PYTHON)" -m ruff format --check src tests scripts
 	"$(REPO_PYTHON)" -m mypy src
 
-repo-test: ## ci.yml gate 4: pytest
-	"$(REPO_PYTHON)" -m pytest -q --tb=short
+repo-test: ## The whole suite: push to main, nightly, dispatch and local runs
+	"$(TEST_PYTHON)" -m pytest -q --tb=short
+
+# The pull-request selection is a literal list the expense judge can read. It
+# holds every suite that exercises src/: each package's unit tests plus the
+# contract, lock and release-identity checks. Excluded, and run on push to main
+# and nightly by `repo-test`: tests/packaging (builds and installs the wheel)
+# and tests/integration (its own integration.yml job). A new tests/ package is
+# not covered until it is added here.
+repo-test-fast: ## ci.yml gate 4 on pull requests: bounded pytest selection
+	"$(TEST_PYTHON)" -m pytest -q --tb=short tests/contracts tests/gate tests/gate_authority tests/orchestrator tests/runtime tests/security tests/transport tests/test_dependency_locks.py tests/test_release_identity.py

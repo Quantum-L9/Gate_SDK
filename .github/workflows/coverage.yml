@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -50,7 +53,28 @@ jobs:
           python -m pip install --no-index --no-deps --no-build-isolation -e .
           python -m pip check
 
-      - name: Run pytest with coverage
+      # make-v2: a pull request runs the bounded `make test-fast` selection and
+      # gates coverage of the lines it changes at 80% (diff-cover against the
+      # PR base). The whole suite, with the whole-repository 80% floor, runs on
+      # push to main, nightly and dispatch. Neither floor is lowered.
+      - name: Run bounded pytest with coverage (pull request)
+        if: github.event_name == 'pull_request'
+        env:
+          PYTEST_ADDOPTS: >-
+            --cov=constellation_node_sdk
+            --cov-report=xml:coverage.xml
+            --cov-report=term-missing
+        run: make test-fast
+
+      - name: Gate coverage of changed lines at 80% (pull request)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          diff-cover coverage.xml --compare-branch="origin/${BASE_REF}" --fail-under=80
+
+      - name: Run pytest with coverage (push, nightly, dispatch)
+        if: github.event_name != 'pull_request'
         run: |
           pytest -q \
             --cov=constellation_node_sdk \
@@ -73,6 +97,8 @@ jobs:
 # a startup_failure before any job ever ran. Removed; this job now runs
 # independently in parallel with ci.yml on the same push/pull_request
 # trigger, matching integration.yml's pattern.
-# Enforcement: job fails if pytest --cov-fail-under=80 exits non-zero.
+# Enforcement: on pull requests the job fails if diff-cover reports changed-line
+# coverage under 80%; on push, nightly and dispatch it fails if the whole-suite
+# pytest --cov-fail-under=80 exits non-zero.
 # To add as a required status check, enable branch protection on main/master
 # and add "coverage / pytest-coverage (3.12)" to required checks.
