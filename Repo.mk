@@ -96,7 +96,7 @@ repo-test: ## ci.yml gate 4: pytest
 # make-v2: the bounded pull-request test phase
 #
 # `test-fast` (make-v2 facade) runs on pull requests; `test` / repo-test stays
-# the whole suite for push to main, nightly, dispatch and local runs. The
+# the whole suite for nightly, dispatch and local runs. The
 # selection is a literal list the l9-ci-core expense judge can read. It holds
 # every suite that exercises src/: each package's unit tests plus the contract,
 # lock and release-identity checks. Excluded, and run by the whole suite:

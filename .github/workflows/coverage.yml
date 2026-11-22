@@ -1,8 +1,6 @@
 name: coverage
 
 on:
-  push:
-    branches: [main, master]
   pull_request:
     branches: [main, master]
   schedule:
@@ -55,8 +53,8 @@ jobs:
 
       # make-v2: a pull request runs the bounded `make test-fast` selection and
       # gates coverage of the lines it changes at 80% (diff-cover against the
-      # PR base). The whole suite, with the whole-repository 80% floor, runs on
-      # push to main, nightly and dispatch. Neither floor is lowered.
+      # PR base). The whole suite, with the whole-repository 80% floor, runs
+      # nightly and on demand (workflow_dispatch). Neither floor is lowered.
       - name: Run bounded pytest with coverage (pull request)
         if: github.event_name == 'pull_request'
         env:
@@ -74,8 +72,8 @@ jobs:
           python -m pip install --require-hashes --only-binary :all: -r requirements/coverage.lock
           diff-cover coverage.xml --compare-branch="origin/${BASE_REF}" --fail-under=80
 
-      - name: Run pytest with coverage (push, nightly, dispatch)
-        if: github.event_name != 'pull_request'
+      - name: Run pytest with coverage (nightly, dispatch)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           pytest -q \
             --cov=constellation_node_sdk \
@@ -99,7 +97,7 @@ jobs:
 # independently in parallel with ci.yml on the same push/pull_request
 # trigger, matching integration.yml's pattern.
 # Enforcement: on pull requests the job fails if diff-cover reports changed-line
-# coverage under 80%; on push, nightly and dispatch it fails if the whole-suite
+# coverage under 80%; nightly and on dispatch it fails if the whole-suite
 # pytest --cov-fail-under=80 exits non-zero.
 # To add as a required status check, enable branch protection on main/master
 # and add "coverage / pytest-coverage (3.12)" to required checks.
