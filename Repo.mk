@@ -91,3 +91,25 @@ repo-check: ## ci.yml gate 1: ruff lint, ruff format check, mypy
 
 repo-test: ## ci.yml gate 4: pytest
 	"$(REPO_PYTHON)" -m pytest -q --tb=short
+
+# ---------------------------------------------------------------------------
+# make-v2: the bounded pull-request test phase
+#
+# `test-fast` (make-v2 facade) runs on pull requests; `test` / repo-test stays
+# the whole suite for nightly, dispatch and local runs. The
+# selection is a literal list the l9-ci-core expense judge can read. It holds
+# every suite that exercises src/: each package's unit tests plus the contract,
+# lock and release-identity checks. Excluded, and run by the whole suite:
+# tests/packaging (builds and installs the wheel) and tests/integration (its own
+# integration.yml job). A new tests/ package is not covered on pull requests
+# until it is added here.
+#
+# CI jobs install into the runner interpreter rather than .venv, so this leaf
+# falls back to it when the repository virtualenv does not exist.
+# ---------------------------------------------------------------------------
+TEST_FAST_PYTHON := $(if $(wildcard $(REPO_PYTHON)),$(REPO_PYTHON),python)
+
+.PHONY: repo-test-fast
+
+repo-test-fast: ## ci.yml gate 4 on pull requests: bounded pytest selection
+	"$(TEST_FAST_PYTHON)" -m pytest -q --tb=short tests/contracts tests/gate tests/gate_authority tests/orchestrator tests/runtime tests/security tests/transport tests/test_dependency_locks.py tests/test_release_identity.py
