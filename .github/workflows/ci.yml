@@ -8,7 +8,7 @@
 # 1 lint — ruff check src tests scripts + ruff format --check + mypy src
 # 2 contracts — scripts/validate_contracts.py
 # 3 schema-drift — scripts/generate_schema.py + git diff --exit-code
-# 4 test — pytest -q --tb=short
+# 4 test — make test-fast (bounded make-v2 selection; whole suite: coverage.yml)
 # 5 dep-audit — pip-audit CVE scan
 # 6 secret-scan — TruffleHog --only-verified
 # 7 build — python -m build → sdist + wheel artifact
@@ -204,7 +204,7 @@ jobs:
           python -m pip check
 
       - name: Pytest
-        run: pytest -q --tb=short
+        run: make test-fast
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GATE 5 — Dependency security audit

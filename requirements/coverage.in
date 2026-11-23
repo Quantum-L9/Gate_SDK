@@ -1,0 +1,4 @@
+# Changed-line coverage gate for pull requests (coverage.yml). Installed
+# beside the dev environment whose coverage.xml it reads, so it is compiled
+# against dev.lock and every shared package keeps the version dev.lock pins.
+diff-cover
