@@ -70,6 +70,7 @@ LOCKS: tuple[LockSpec, ...] = (
         superset_of=("runtime",),
     ),
     LockSpec("audit", (f"{LOCK_DIR}/audit.in",), constrained_by=("dev",)),
+    LockSpec("coverage", (f"{LOCK_DIR}/coverage.in",), constrained_by=("dev",)),
     LockSpec("precommit", (f"{LOCK_DIR}/precommit.in",), constrained_by=("dev",)),
     LockSpec("twine", (f"{LOCK_DIR}/twine.in",), constrained_by=("build",)),
     LockSpec("sbom", (f"{LOCK_DIR}/sbom.in",), constrained_by=("runtime",)),
