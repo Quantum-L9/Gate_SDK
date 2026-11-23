@@ -1,51 +1,21 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
-from collections.abc import Callable, Mapping
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
 from constellation_node_sdk.transport.errors import TransportAuthenticationError
+from constellation_node_sdk.transport.key_binding import (
+    KeyResolver,
+    VerifyingKey,
+    resolve_bound_verifying_key,
+)
 from constellation_node_sdk.transport.packet import TransportPacket
 
-
-def _coerce_bytes(value: str | bytes) -> bytes:
-    if isinstance(value, bytes):
-        return value
-    normalized = value.strip()
-    if normalized.startswith("-----BEGIN"):
-        return normalized.encode("utf-8")
-    try:
-        return base64.b64decode(normalized, validate=True)
-    except Exception:
-        return normalized.encode("utf-8")
-
-
-def _resolve_key(
-    key_resolver: Callable[[str | None], str | bytes | None]
-    | Mapping[str, str | bytes]
-    | str
-    | bytes
-    | None,
-    key_id: str | None,
-) -> bytes | None:
-    if key_resolver is None:
-        return None
-    if isinstance(key_resolver, (bytes, str)):
-        return _coerce_bytes(key_resolver)
-    if callable(key_resolver):
-        value = key_resolver(key_id)
-    else:
-        if key_id is None:
-            return None
-        value = key_resolver.get(key_id)
-    if value is None:
-        return None
-    return _coerce_bytes(value)
+__all__ = ["KeyResolver", "VerifyingKey", "verify_transport_packet_signature"]
 
 
 def _load_ed25519_public_key(raw: bytes) -> Ed25519PublicKey:
@@ -62,14 +32,16 @@ def _load_ed25519_public_key(raw: bytes) -> Ed25519PublicKey:
 def verify_transport_packet_signature(
     packet: TransportPacket,
     *,
-    key_resolver: Callable[[str | None], str | bytes | None]
-    | Mapping[str, str | bytes]
-    | str
-    | bytes
-    | None,
+    key_resolver: KeyResolver,
+    key_algorithm: str | None = None,
 ) -> bool:
     """
     Verify the packet signature against packet.security.transport_hash.
+
+    ``key_algorithm`` binds raw key material returned by ``key_resolver`` to one
+    algorithm; a resolver may instead bind per key by returning
+    :class:`VerifyingKey`. A packet whose declared algorithm differs from its
+    key's binding is refused before any cryptographic check.
 
     Returns False for unsigned packets.
     Raises TransportAuthenticationError for key resolution or verification failures.
@@ -77,7 +49,12 @@ def verify_transport_packet_signature(
     if packet.security.signature is None or packet.security.signature_algorithm is None:
         return False
 
-    key = _resolve_key(key_resolver, packet.security.signing_key_id)
+    key = resolve_bound_verifying_key(
+        key_resolver,
+        packet.security.signing_key_id,
+        declared_algorithm=packet.security.signature_algorithm,
+        key_algorithm=key_algorithm,
+    )
     if key is None:
         raise TransportAuthenticationError(
             "no verifying key available for transport signature verification"

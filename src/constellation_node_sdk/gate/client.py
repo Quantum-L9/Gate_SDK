@@ -339,9 +339,11 @@ class GateClient:
             validate_transport_packet(
                 packet,
                 key_resolver=self._transport_key_resolver(),
+                key_algorithm=self._config.signing_algorithm,
                 require_signature=self._config.require_signature,
                 dev_mode=not self._config.require_signature,
                 verify_hop_signatures=self._config.verify_hop_signatures,
+                hop_key_algorithm=self._config.signing_algorithm,
             )
         except TransportError as exc:
             raise GateSecurityError(
@@ -354,9 +356,11 @@ class GateClient:
             validate_transport_packet(
                 packet,
                 key_resolver=self._transport_key_resolver(),
+                key_algorithm=self._config.signing_algorithm,
                 require_signature=self._config.verify_response_signatures,
                 dev_mode=not self._config.verify_response_signatures,
                 verify_hop_signatures=self._config.verify_hop_signatures,
+                hop_key_algorithm=self._config.signing_algorithm,
             )
         except TransportError as exc:
             raise GateSecurityError(
