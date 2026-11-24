@@ -196,11 +196,62 @@ def test_missing_tags_fail_on_a_non_shallow_clone(tmp_path: Path) -> None:
     """A complete clone must FAIL when the release tag and channel are absent."""
     work = tmp_path / "complete"
     ledger = _seed_head_only_repo(work)
+    # Hermetic: the live ledger's status must not decide this test's regime.
+    payload = json.loads(ledger.read_text())
+    payload["github_release_status"] = "created"
+    ledger.write_text(json.dumps(payload, indent=2) + "\n")
 
     completed = _run("--repo", str(work), "--ledger", str(ledger))
     assert completed.returncode != 0, completed.stdout + completed.stderr
     assert "FAIL" in completed.stdout
     assert "non-shallow" in completed.stdout
+
+
+def test_a_pending_release_tag_is_deferred_not_a_disagreement(tmp_path: Path) -> None:
+    """A prepared, unpublished version has no exact tag yet: say so, pass."""
+    work = tmp_path / "pending"
+    ledger = _seed_head_only_repo(work)
+    payload = json.loads(ledger.read_text())
+    payload["github_release_status"] = "pending"
+    ledger.write_text(json.dumps(payload, indent=2) + "\n")
+    _git(work, "add", "contracts/RELEASE_IDENTITY_LEDGER.json")
+    _git(work, "commit", "-qm", "declare the release pending")
+
+    completed = _run("--repo", str(work), "--ledger", str(ledger))
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "declared pending" in completed.stdout
+    assert "PASS" in completed.stdout
+
+
+def test_an_unknown_release_status_is_refused(tmp_path: Path) -> None:
+    """Anything but pending/created would silently pick a regime; refuse it."""
+    work = tmp_path / "unknown-status"
+    ledger = _seed_head_only_repo(work)
+    payload = json.loads(ledger.read_text())
+    payload["github_release_status"] = "shipped"
+    ledger.write_text(json.dumps(payload, indent=2) + "\n")
+
+    completed = _run("--repo", str(work), "--ledger", str(ledger))
+    assert completed.returncode != 0, completed.stdout
+    assert "github_release_status must be" in completed.stdout
+
+
+def test_pending_does_not_open_the_release_gate(tmp_path: Path) -> None:
+    """Publishing still requires the tag object; pending never excuses it."""
+    work = tmp_path / "pending-gate"
+    ledger = _seed_head_only_repo(work)
+    payload = json.loads(ledger.read_text())
+    payload["github_release_status"] = "pending"
+    ledger.write_text(json.dumps(payload, indent=2) + "\n")
+    _git(work, "add", "contracts/RELEASE_IDENTITY_LEDGER.json")
+    _git(work, "commit", "-qm", "declare the release pending")
+    tag = payload["release_tag"]
+    _git(work, "tag", tag, "HEAD~2")
+
+    errors, notes = _load_validator().validate(work, ledger, release_gate=tag, remote=str(work))
+    assert errors, notes
+    assert any(f"is not {tag}" in error for error in errors), errors
+    assert not any("declared pending" in note for note in notes), notes
 
 
 def test_shallow_clone_skips_object_checks_and_says_so(tmp_path: Path) -> None:

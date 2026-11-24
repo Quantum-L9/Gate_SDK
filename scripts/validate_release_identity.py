@@ -240,6 +240,31 @@ def check_declared_refs(ledger: dict[str, object], expected_tag: str, channel: s
     return errors
 
 
+def check_release_status(ledger: dict[str, object]) -> tuple[str, list[str]]:
+    """Read the ledger's own statement of whether the release exists yet.
+
+    ``pending`` means the version is prepared but not published: the exact tag
+    cannot exist, so the local tag-object checks have nothing to bind to and
+    defer to the release gate, which requires the tag unconditionally.
+    ``created`` means the release is published, so a missing tag object is a
+    real disagreement. Any other value is refused rather than guessed at,
+    because guessing would decide which of those two regimes applies.
+
+    An absent field reads as ``created``: ledgers written before the field
+    existed describe published releases, and the strict regime is the one that
+    fails closed.
+    """
+    status = ledger.get("github_release_status")
+    if status is None:
+        return "created", []
+    if status not in ("pending", "created"):
+        return "", [
+            "github_release_status must be 'pending' (prepared, not published) "
+            f"or 'created' (published), got {status!r}"
+        ]
+    return str(status), []
+
+
 def check_remote_identity(
     remote: str, expected_tag: str, channel: str
 ) -> tuple[list[str], list[str]]:
@@ -317,6 +342,7 @@ def check_local_tag_objects(
     package_version: str,
     *,
     release_gate: bool = False,
+    declared_pending: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Resolve both refs in this clone and judge what they point at.
 
@@ -345,6 +371,15 @@ def check_local_tag_objects(
         if _is_shallow(repo):
             notes.append(
                 f"INFO: skipped tag object checks (shallow clone); unresolved: {', '.join(missing)}"
+            )
+        elif release_sha is None and declared_pending:
+            # A prepared-but-unpublished version has no exact tag yet, so there
+            # is nothing to bind HEAD to. This is the only case where an absent
+            # release tag is not a disagreement; --release-gate still requires
+            # the tag, so the publish path stays closed until it exists.
+            notes.append(
+                f"INFO: {expected_tag} is declared pending (github_release_status=pending); "
+                "tag-object and channel agreement are deferred to the release gate"
             )
         else:
             errors.append(
@@ -414,6 +449,8 @@ def validate(
 
     errors.extend(check_ledger_policy(ledger))
     errors.extend(check_manifest_agreement(project, ledger))
+    release_status, status_errors = check_release_status(ledger)
+    errors.extend(status_errors)
 
     package_version = ledger.get("package_version")
     if not isinstance(package_version, str):
@@ -468,6 +505,7 @@ def validate(
         expected_channel,
         package_version,
         release_gate=release_gate is not None,
+        declared_pending=release_status == "pending",
     )
     errors.extend(local_errors)
     notes.extend(local_notes)
