@@ -6,7 +6,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [1.3.4] — 2026-11-24
 
 ### Fixed
 - **A peer's verifying key is bound by the key, never by the node's own
@@ -24,6 +24,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `resolve_verifying_key` still returns raw material; verification uses the new
   `bound_key_resolver()`.
 
+### Changed
+- **Verifying-key resolution lives in one place.** The per-key declaration and
+  material-inference logic added in the D-1 regression fix is a single shared
+  mixin (`transport/key_binding.py`) used by the node runtime, `GateClient` and the
+  Gate dispatch transport, instead of three copies. No behaviour change; the
+  configuration surface and its validation are identical.
 ## [1.3.3] — 2026-11-24
 
 ### Security
