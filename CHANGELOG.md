@@ -6,6 +6,34 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Publication is derived from the remote, not recorded in the ledger.** The
+  release-identity ledger carried a field stating whether the GitHub release
+  existed, and a follow-up pull request had to flip it after every release:
+  forget it and a published release stayed unverified, flip it early and the
+  validator asserted a release that did not exist. The field is gone.
+  `scripts/validate_release_identity.py` now asks the canonical remote —
+  `git ls-remote --exit-code` against the exact release tag — and reads the
+  answer three ways: present is published, absent is prepared but not published,
+  and a remote that does not answer is a hard error rather than either verdict.
+  A tag object that exists locally but not on the remote is simply not published
+  yet, which is the case the removed field used to declare by hand.
+  `--release-gate` still requires the tag on the remote and HEAD == that object,
+  so a not-yet-published release cannot be published by passing the gate.
+- **The default mode is networked.** Deriving publication means a default run
+  needs the canonical remote to answer, and it fails closed when it does not.
+- **Unknown ledger fields are refused.** The ledger is validated against the
+  keys it is allowed to carry, so a retired field cannot return as an unread
+  statement. This is stricter than before.
+- **An annotated release tag resolves to its commit.** `git ls-remote` with an
+  exact tag pattern omits the `^{}` peel line, so the validator could compare a
+  release against a tag object instead of the commit that object names. It now
+  asks with a wider pattern and prefers the peeled commit.
+
+---
+
 ## [1.3.4] — 2026-11-24
 
 ### Fixed
@@ -96,10 +124,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A prepared release is validated before its tag exists.** The release-identity
   validator treated the absence of the exact tag on a full clone as a disagreement,
   which no release-preparation pull request can satisfy: the tag cannot exist before
-  the merge that creates it. The ledger now states `github_release_status`
-  (`pending` while prepared, `created` once published); a `pending` ledger defers the
-  tag-object and channel checks to the release gate, which still requires the tag,
-  HEAD == that object, and an ancestor channel.
+  the merge that creates it. A ledger field recorded whether the release had been
+  published yet (`pending` while prepared, `created` once published); a `pending`
+  ledger deferred the tag-object and channel checks to the release gate, which still
+  requires the tag, HEAD == that object, and an ancestor channel. Superseded: the
+  field is retired and publication is derived from the canonical remote — see
+  Unreleased.
 - `scripts/lock_requirements.py` regenerates every lock (scoped refresh;
   `LOCK_UPGRADE_ALL=1` for a full one). `scripts/validate_locks.py` (gate 2 and
   release gate 2) fails on a stale or disagreeing lock and on any unlocked

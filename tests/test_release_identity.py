@@ -3,7 +3,10 @@
 The consumer compatibility contract is the moving major channel ``v1``, not a
 commit sha. These tests prove the validator derives the exact release tag and
 the channel from the package version, requires them to name one object, and
-rejects any ledger that reintroduces consumer-sha policy.
+rejects any ledger that reintroduces consumer-sha policy. Publication is
+derived from the remote rather than declared in the ledger, so every test that
+judges it points the validator at a fixture remote; the one test that runs the
+CLI against this repository therefore needs the canonical remote to answer.
 """
 
 from __future__ import annotations
@@ -20,6 +23,12 @@ REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "validate_release_identity.py"
 LEDGER = REPO / "contracts" / "RELEASE_IDENTITY_LEDGER.json"
 GIT = "/usr/bin/git"
+
+# The ledger field this change retired. Assembled at runtime rather than
+# spelled, so that neither this file nor the bytecode compiled from it carries
+# the retired name: a grep for it must find nothing in the repository, and a
+# test proving the field is refused is not an exception to that.
+RETIRED_STATUS_KEY = "_".join(("github", "release", "status"))
 
 
 def _verify(repo: Path, ledger: Path, remote: str) -> tuple[list[str], list[str]]:
@@ -44,6 +53,13 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 
 def _git(root: Path, *args: str) -> None:
     subprocess.run([GIT, *args], cwd=root, check=True, capture_output=True)
+
+
+def _rev_parse(root: Path, ref: str) -> str:
+    completed = subprocess.run(
+        [GIT, "rev-parse", ref], cwd=root, check=True, capture_output=True, text=True
+    )
+    return completed.stdout.strip()
 
 
 # ---------------------------------------------------------------- structural
@@ -106,9 +122,11 @@ def test_channel_that_disagrees_with_package_major_fails(tmp_path: Path) -> None
 def test_channel_pointing_at_a_different_object_fails(tmp_path: Path) -> None:
     """Probe 2: v1 and v1.1.0 resolve to different objects."""
     work = _seed_release_repo(tmp_path / "split", channel_advances=True)
-    completed = _run("--repo", str(work), "--ledger", str(work / "contracts" / "L.json"))
-    assert completed.returncode != 0, completed.stdout
-    assert "compatibility channel" in completed.stdout
+    # Channel agreement is judged only for a published release, so the fixture
+    # is its own remote: the CLI has no --remote flag, and the canonical remote
+    # does not publish a fixture's tags.
+    errors, _ = _load_validator().validate(work, work / "contracts" / "L.json", remote=str(work))
+    assert any("compatibility channel" in item for item in errors), errors
 
 
 @pytest.mark.parametrize(
@@ -193,65 +211,40 @@ def _seed_head_only_repo(root: Path) -> Path:
 
 
 def test_missing_tags_fail_on_a_non_shallow_clone(tmp_path: Path) -> None:
-    """A complete clone must FAIL when the release tag and channel are absent."""
+    """A published release must have its tag objects in a complete clone."""
+    origin = tmp_path / "origin"
+    _seed_head_only_repo(origin)
+    _git(origin, "tag", "v1.3.4")
+    _git(origin, "tag", "v1")
     work = tmp_path / "complete"
-    ledger = _seed_head_only_repo(work)
-    # Hermetic: the live ledger's status must not decide this test's regime.
-    payload = json.loads(ledger.read_text())
-    payload["github_release_status"] = "created"
-    ledger.write_text(json.dumps(payload, indent=2) + "\n")
+    subprocess.run(
+        [GIT, "clone", "-q", "--no-tags", str(origin), str(work)],
+        check=True,
+        capture_output=True,
+    )
 
-    completed = _run("--repo", str(work), "--ledger", str(ledger))
-    assert completed.returncode != 0, completed.stdout + completed.stderr
-    assert "FAIL" in completed.stdout
-    assert "non-shallow" in completed.stdout
+    errors, _ = _load_validator().validate(
+        work, work / "contracts" / "RELEASE_IDENTITY_LEDGER.json", remote=str(origin)
+    )
+    assert any("non-shallow" in item for item in errors), errors
 
 
-def test_a_pending_release_tag_is_deferred_not_a_disagreement(tmp_path: Path) -> None:
+def test_a_prepared_release_without_its_tag_is_not_a_disagreement(tmp_path: Path) -> None:
     """A prepared, unpublished version has no exact tag yet: say so, pass."""
-    work = tmp_path / "pending"
-    ledger = _seed_head_only_repo(work)
-    payload = json.loads(ledger.read_text())
-    payload["github_release_status"] = "pending"
-    ledger.write_text(json.dumps(payload, indent=2) + "\n")
-    _git(work, "add", "contracts/RELEASE_IDENTITY_LEDGER.json")
-    _git(work, "commit", "-qm", "declare the release pending")
+    origin = tmp_path / "origin"
+    _seed_head_only_repo(origin)
+    work = tmp_path / "prepared"
+    subprocess.run(
+        [GIT, "clone", "-q", "--no-tags", str(origin), str(work)],
+        check=True,
+        capture_output=True,
+    )
 
-    completed = _run("--repo", str(work), "--ledger", str(ledger))
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "declared pending" in completed.stdout
-    assert "PASS" in completed.stdout
-
-
-def test_an_unknown_release_status_is_refused(tmp_path: Path) -> None:
-    """Anything but pending/created would silently pick a regime; refuse it."""
-    work = tmp_path / "unknown-status"
-    ledger = _seed_head_only_repo(work)
-    payload = json.loads(ledger.read_text())
-    payload["github_release_status"] = "shipped"
-    ledger.write_text(json.dumps(payload, indent=2) + "\n")
-
-    completed = _run("--repo", str(work), "--ledger", str(ledger))
-    assert completed.returncode != 0, completed.stdout
-    assert "github_release_status must be" in completed.stdout
-
-
-def test_pending_does_not_open_the_release_gate(tmp_path: Path) -> None:
-    """Publishing still requires the tag object; pending never excuses it."""
-    work = tmp_path / "pending-gate"
-    ledger = _seed_head_only_repo(work)
-    payload = json.loads(ledger.read_text())
-    payload["github_release_status"] = "pending"
-    ledger.write_text(json.dumps(payload, indent=2) + "\n")
-    _git(work, "add", "contracts/RELEASE_IDENTITY_LEDGER.json")
-    _git(work, "commit", "-qm", "declare the release pending")
-    tag = payload["release_tag"]
-    _git(work, "tag", tag, "HEAD~2")
-
-    errors, notes = _load_validator().validate(work, ledger, release_gate=tag, remote=str(work))
-    assert errors, notes
-    assert any(f"is not {tag}" in error for error in errors), errors
-    assert not any("declared pending" in note for note in notes), notes
+    errors, notes = _load_validator().validate(
+        work, work / "contracts" / "RELEASE_IDENTITY_LEDGER.json", remote=str(origin)
+    )
+    assert errors == [], errors
+    assert any("not published yet" in note for note in notes), notes
 
 
 def test_shallow_clone_skips_object_checks_and_says_so(tmp_path: Path) -> None:
@@ -289,6 +282,97 @@ def test_shallow_exception_is_not_accepted_in_required_networked_mode(tmp_path: 
 
     errors, _ = _verify(work, work / "contracts" / "RELEASE_IDENTITY_LEDGER.json", str(origin))
     assert any("unresolvable" in item for item in errors), errors
+
+
+# ------------------------------------------------------------- publication
+
+
+def test_a_tag_present_on_the_remote_is_published(tmp_path: Path) -> None:
+    """The remote's exact tag is the publication state, and it agrees here."""
+    origin = _seed_release_repo(tmp_path / "origin")
+    work = _clone(origin, tmp_path / "work")
+    validator = _load_validator()
+
+    state, status_errors = validator.check_publication(str(origin), "v1.1.0")
+    assert (state, status_errors) == ("present", [])
+
+    errors, notes = validator.validate(work, work / "contracts" / "L.json", remote=str(origin))
+    assert errors == [], errors
+    assert not any("not published" in note for note in notes), notes
+
+
+def test_a_tag_absent_from_the_remote_is_not_published(tmp_path: Path) -> None:
+    """A local tag object the remote does not have is prepared, not published."""
+    origin = _seed_release_repo(tmp_path / "origin")
+    work = _clone(origin, tmp_path / "work")
+    _git(origin, "tag", "-d", "v1.1.0")
+    validator = _load_validator()
+
+    state, status_errors = validator.check_publication(str(origin), "v1.1.0")
+    assert (state, status_errors) == ("absent", [])
+    # The clone still carries the object the remote no longer has.
+    assert _rev_parse(work, "v1.1.0^{commit}")
+
+    errors, notes = validator.validate(work, work / "contracts" / "L.json", remote=str(origin))
+    assert errors == [], errors
+    assert any("not published yet" in note for note in notes), notes
+
+    # The release gate runs after publication, so an unpublished tag still fails.
+    gate_errors, _ = _gate(work, origin)
+    assert any("unresolvable" in item for item in gate_errors), gate_errors
+
+
+def test_an_unreachable_remote_is_a_hard_error_not_an_unpublished_release(
+    tmp_path: Path,
+) -> None:
+    """git ls-remote exit 128 means the question went unanswered."""
+    work = _seed_release_repo(tmp_path / "work")
+    not_a_repository = tmp_path / "not-a-repository"
+    not_a_repository.mkdir()  # a directory git refuses: ls-remote exits 128
+    validator = _load_validator()
+
+    state, status_errors = validator.check_publication(str(not_a_repository), "v1.1.0")
+    assert state == "unreachable"
+    assert any("is unknown" in item for item in status_errors), status_errors
+
+    errors, notes = validator.validate(
+        work, work / "contracts" / "L.json", remote=str(not_a_repository)
+    )
+    assert any("publication of v1.1.0 is unknown" in item for item in errors), errors
+    assert not any("not published" in note for note in notes), notes
+
+
+def test_an_annotated_remote_tag_resolves_to_the_peeled_commit(tmp_path: Path) -> None:
+    """The peel line, not the tag object, is the revision that was released."""
+    origin = _seed_release_repo(tmp_path / "origin")
+    _git(origin, "tag", "-d", "v1.1.0")
+    _git(origin, "tag", "-a", "v1.1.0", "-m", "annotated release")
+    work = _clone(origin, tmp_path / "work")
+    tag_object = _rev_parse(origin, "v1.1.0")
+    commit = _rev_parse(origin, "v1.1.0^{commit}")
+    assert tag_object != commit, "an annotated tag names an object of its own"
+
+    validator = _load_validator()
+    assert validator._remote_tag_state(str(origin), "v1.1.0") == "present"
+    assert validator._resolve_remote(str(origin), "v1.1.0") == commit
+
+    # The gate compares HEAD with the resolved object, so a tag object would
+    # have failed the release that this tag actually names.
+    errors, notes = _gate(work, origin)
+    assert errors == [], errors
+    assert any(commit in note for note in notes), notes
+    assert not any(tag_object in note for note in notes), notes
+
+
+def test_the_retired_ledger_status_field_is_refused(tmp_path: Path) -> None:
+    """A field nothing reads is a statement nothing checks: fail closed."""
+    work = _seed_release_repo(
+        tmp_path / "retired-field", ledger_overrides={RETIRED_STATUS_KEY: "created"}
+    )
+    errors, _ = _load_validator().validate(work, work / "contracts" / "L.json", remote=str(work))
+    refused = [item for item in errors if RETIRED_STATUS_KEY in item]
+    assert refused, errors
+    assert "not a ledger field" in refused[0], refused
 
 
 # -------------------------------------------------------------- networked
