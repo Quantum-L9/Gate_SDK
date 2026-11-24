@@ -14,10 +14,19 @@ provenance, or audit evidence. It is never the consumer compatibility
 contract, so this validator derives every expectation from the package version
 and refuses a ledger that reintroduces consumer sha policy.
 
+Publication is derived, never declared. Whether a release exists is a fact
+about the canonical remote, so the remote is asked: the exact release tag
+present means published, absent means prepared but not published, and a remote
+that does not answer is a failure rather than either verdict. The ledger used
+to record that state instead, which made it a hand-flipped field: forget the
+follow-up pull request and a published release stayed unverified; flip it early
+and the validator asserted a release that did not exist.
+
 Modes
 -----
-default        Structural checks plus local tag resolution. A genuinely shallow
-               clone may skip object-level checks and says so.
+default        Structural checks, local tag resolution, and the remote probe
+               that derives publication. A genuinely shallow clone may skip
+               object-level checks and says so.
 --verify-tag   Networked agreement. Resolves the release tag and the
                compatibility channel from the canonical remote and fails closed
                when either cannot be resolved. Steady-state proof: run it after
@@ -41,6 +50,7 @@ import re
 import subprocess
 import tomllib
 from pathlib import Path
+from typing import Literal
 
 LEDGER_SCHEMA = "l9.gate_sdk.release_identity_ledger.v2"
 CANONICAL_REMOTE = "https://github.com/Quantum-L9/Gate_SDK.git"
@@ -48,6 +58,32 @@ SHA_RE = re.compile(r"\b[0-9a-f]{40}\b")
 TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-rc\d+)?$")
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
 
+# Every key the ledger may carry. Publication is deliberately absent from this
+# set: it is a fact about the remote, and a field restating it is a manual step
+# that nothing can verify. Unknown keys are refused rather than ignored,
+# because a field nobody reads is a statement nobody checks.
+LEDGER_KEYS = frozenset(
+    {
+        "agreement_rules",
+        "artifacts",
+        "compatibility_channel",
+        "consumer_contract",
+        "delivery_branch",
+        "delivery_policy",
+        "distribution_name",
+        "github_release_url",
+        "import_name",
+        "observed_at_build",
+        "package_version",
+        "protocol_version",
+        "provenance",
+        "python_requires",
+        "release_authority",
+        "release_tag",
+        "schema",
+        "task_id",
+    }
+)
 # Keys whose presence means the retired v1 consumer-sha policy is back. These
 # are kept apart from the merely-stale v1 fields below because an error message
 # that misnames the violation teaches the wrong correction.
@@ -55,18 +91,30 @@ CONSUMER_SHA_KEYS = ("consumer_pin", "release_commit_sha")
 # v1 fields that carry no consumer policy but no longer have a v2 meaning.
 RETIRED_V1_KEYS = ("release_tag_object",)
 
+# What the remote says about one release tag. ``present`` is published,
+# ``absent`` is not published yet, and ``unreachable`` is the question going
+# unanswered — which is not a third kind of "not published".
+TagState = Literal["present", "absent", "unreachable"]
 
-def _git(repo: Path, *args: str) -> str:
-    # Call real git by absolute path. Controller worktrees often put a git
-    # guard ahead of PATH that requires L9_REAL_GIT and denies some forms.
-    git_bin = Path("/usr/bin/git")
-    completed = subprocess.run(
-        [str(git_bin), *args],
+
+def _git_process(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run git and keep the exit status, which some questions are answered by.
+
+    Call real git by absolute path. Controller worktrees often put a git
+    guard ahead of PATH that requires L9_REAL_GIT and denies some forms.
+    """
+    return subprocess.run(
+        [str(Path("/usr/bin/git")), *args],
         check=False,
         text=True,
         capture_output=True,
         cwd=str(repo),
     )
+
+
+def _git(repo: Path, *args: str) -> str:
+    """Run git and return stdout, raising when it fails."""
+    completed = _git_process(repo, *args)
     if completed.returncode != 0:
         raise RuntimeError(completed.stderr.strip() or f"git {' '.join(args)} failed")
     return completed.stdout.strip()
@@ -119,19 +167,13 @@ def _safe_remote(remote: str) -> str:
     return str(candidate.resolve(strict=True))
 
 
-def _resolve_remote(remote: str, ref: str) -> str | None:
-    """Resolve ``refs/tags/<ref>`` at *remote*, preferring the peeled object."""
-    try:
-        output = _git(
-            Path.cwd(),
-            "ls-remote",
-            "--tags",
-            "--end-of-options",
-            _safe_remote(remote),
-            f"refs/tags/{ref}",
-        )
-    except RuntimeError:
-        return None
+def _parse_tag_lines(output: str, ref: str) -> tuple[str | None, str | None]:
+    """Return ``(direct, peeled)`` for ``refs/tags/<ref>`` from ls-remote output.
+
+    ``direct`` is the sha the remote publishes for the ref — the tag object
+    itself for an annotated tag — and ``peeled`` is the commit it resolves to,
+    which the remote reports on the ``refs/tags/<ref>^{}`` line.
+    """
     peeled: str | None = None
     direct: str | None = None
     for line in output.splitlines():
@@ -140,7 +182,60 @@ def _resolve_remote(remote: str, ref: str) -> str | None:
             peeled = sha.strip()
         elif name == f"refs/tags/{ref}":
             direct = sha.strip()
+    return direct, peeled
+
+
+def _resolve_remote(remote: str, ref: str) -> str | None:
+    """Resolve ``refs/tags/<ref>`` at *remote*, preferring the peeled object.
+
+    The pattern is deliberately wider than the ref: ``git ls-remote`` with an
+    exact ``refs/tags/<ref>`` pattern does not emit the ``^{}`` peel line, so
+    the exact form reports an annotated tag's own object and the commit it
+    names would never be seen. ``_parse_tag_lines`` matches the exact names, so
+    sibling tags the wider pattern also matches are ignored.
+    """
+    try:
+        output = _git(
+            Path.cwd(),
+            "ls-remote",
+            "--tags",
+            "--end-of-options",
+            _safe_remote(remote),
+            f"refs/tags/{ref}*",
+        )
+    except RuntimeError:
+        return None
+    direct, peeled = _parse_tag_lines(output, ref)
     return peeled or direct
+
+
+def _remote_tag_state(remote: str, tag: str) -> TagState:
+    """Ask *remote* whether ``refs/tags/<tag>`` exists.
+
+    Presence only. The exact pattern makes git omit the ``^{}`` peel line, so
+    this cannot answer which object the tag names — ``_resolve_remote`` does
+    that with a wider pattern.
+
+    ``--exit-code`` is what makes the answer three-valued. 0 is the remote
+    reporting the ref, 2 is the remote reporting it has no such ref, and every
+    other status is the remote not answering at all. Folding the last into the
+    second would turn an unreachable remote into "not published", a verdict
+    about the release that no evidence supports.
+    """
+    completed = _git_process(
+        Path.cwd(),
+        "ls-remote",
+        "--exit-code",
+        "--tags",
+        "--end-of-options",
+        _safe_remote(remote),
+        f"refs/tags/{tag}",
+    )
+    if completed.returncode == 0:
+        return "present"
+    if completed.returncode == 2:
+        return "absent"
+    return "unreachable"
 
 
 def derive_expectations(package_version: str) -> tuple[str, str]:
@@ -169,6 +264,16 @@ def check_ledger_policy(ledger: dict[str, object]) -> list[str]:
     for key in RETIRED_V1_KEYS:
         if key in ledger:
             errors.append(f"{key!r} is a schema v1 field with no meaning under {LEDGER_SCHEMA}")
+
+    # Fail closed on anything else. The retired keys above are named separately
+    # so their error teaches the right correction; every other unknown key is
+    # refused here rather than read past, because a field the validator ignores
+    # is a statement no one checks.
+    retired = {*CONSUMER_SHA_KEYS, *RETIRED_V1_KEYS}
+    for key in sorted(set(ledger) - LEDGER_KEYS - retired):
+        errors.append(
+            f"{key!r} is not a ledger field; unknown keys are refused rather than ignored"
+        )
 
     contract = ledger.get("consumer_contract")
     if not isinstance(contract, dict):
@@ -240,29 +345,30 @@ def check_declared_refs(ledger: dict[str, object], expected_tag: str, channel: s
     return errors
 
 
-def check_release_status(ledger: dict[str, object]) -> tuple[str, list[str]]:
-    """Read the ledger's own statement of whether the release exists yet.
+def check_publication(remote: str, expected_tag: str) -> tuple[TagState, list[str]]:
+    """Derive whether *expected_tag* is published from the canonical remote.
 
-    ``pending`` means the version is prepared but not published: the exact tag
-    cannot exist, so the local tag-object checks have nothing to bind to and
-    defer to the release gate, which requires the tag unconditionally.
-    ``created`` means the release is published, so a missing tag object is a
-    real disagreement. Any other value is refused rather than guessed at,
-    because guessing would decide which of those two regimes applies.
+    ``present`` is published: the exact tag exists where consumers resolve it.
+    ``absent`` is prepared but not published, which is the ordinary state of a
+    release-preparation pull request and of every release before its tag push.
+    ``unreachable`` is a hard error, never a third kind of "not published": the
+    question went unanswered, so no regime may be chosen on the strength of it.
 
-    An absent field reads as ``created``: ledgers written before the field
-    existed describe published releases, and the strict regime is the one that
-    fails closed.
+    A refused remote is reported the same way and returned rather than raised,
+    because it also means no probe ran: the remaining checks still run, and the
+    run still fails closed.
     """
-    status = ledger.get("github_release_status")
-    if status is None:
-        return "created", []
-    if status not in ("pending", "created"):
-        return "", [
-            "github_release_status must be 'pending' (prepared, not published) "
-            f"or 'created' (published), got {status!r}"
+    try:
+        state = _remote_tag_state(remote, expected_tag)
+    except ValueError as exc:
+        return "unreachable", [f"publication of {expected_tag} is unknown: {exc}"]
+    if state == "unreachable":
+        return state, [
+            f"publication of {expected_tag} is unknown: {remote} did not answer the tag "
+            "probe (git ls-remote exited other than 0 for present or 2 for absent); "
+            "an unanswered probe is neither a published nor an unpublished release"
         ]
-    return str(status), []
+    return state, []
 
 
 def check_remote_identity(
@@ -342,19 +448,30 @@ def check_local_tag_objects(
     package_version: str,
     *,
     release_gate: bool = False,
-    declared_pending: bool = False,
+    publication: TagState = "present",
 ) -> tuple[list[str], list[str]]:
     """Resolve both refs in this clone and judge what they point at.
 
     Under ``release_gate`` the channel is judged by the networked promotion
     check instead, and the release tag must be present: the shallow-clone
     exception is for PR validation, never for a publish.
+
+    Outside the gate an unresolved ref is judged by *publication*, which the
+    caller derived from the remote. A release that is not published yet has no
+    tag object to bind to, so its absence is not a disagreement; a published
+    one whose object is missing from a complete clone is. ``unreachable`` means
+    publication is unknown, so the judgement is withheld rather than guessed —
+    the caller already fails the run on it.
     """
     errors: list[str] = []
     notes: list[str] = []
 
     release_sha = _resolve_local(repo, expected_tag)
     channel_sha = _resolve_local(repo, channel)
+    unresolved = release_sha is None or channel_sha is None
+    missing = [
+        name for name, sha in ((expected_tag, release_sha), (channel, channel_sha)) if sha is None
+    ]
 
     if release_gate:
         if release_sha is None:
@@ -362,30 +479,29 @@ def check_local_tag_objects(
                 f"--release-gate: {expected_tag} absent from this clone; "
                 "check out the tag with full history"
             )
-    elif release_sha is None or channel_sha is None:
-        missing = [
-            name
-            for name, sha in ((expected_tag, release_sha), (channel, channel_sha))
-            if sha is None
-        ]
-        if _is_shallow(repo):
-            notes.append(
-                f"INFO: skipped tag object checks (shallow clone); unresolved: {', '.join(missing)}"
-            )
-        elif release_sha is None and declared_pending:
-            # A prepared-but-unpublished version has no exact tag yet, so there
-            # is nothing to bind HEAD to. This is the only case where an absent
-            # release tag is not a disagreement; --release-gate still requires
-            # the tag, so the publish path stays closed until it exists.
-            notes.append(
-                f"INFO: {expected_tag} is declared pending (github_release_status=pending); "
-                "tag-object and channel agreement are deferred to the release gate"
-            )
-        else:
-            errors.append(
-                f"{', '.join(missing)} absent from a non-shallow clone — "
-                "release identity cannot be judged without the tag objects"
-            )
+    elif unresolved and _is_shallow(repo):
+        notes.append(
+            f"INFO: skipped tag object checks (shallow clone); unresolved: {', '.join(missing)}"
+        )
+    elif publication == "absent":
+        # Prepared but not published: the tag cannot exist before the merge that
+        # publishes it, and the channel is promoted only afterwards, so there is
+        # nothing here to disagree with. --release-gate still requires the tag on
+        # the remote and HEAD == that object, so the publish path stays closed.
+        notes.append(
+            f"INFO: {expected_tag} is not published yet (absent from the remote); "
+            "tag-object and channel agreement are deferred to the release gate"
+        )
+    elif publication == "unreachable":
+        notes.append(
+            f"INFO: publication of {expected_tag} is unknown (the remote did not answer); "
+            "tag-object and channel agreement withheld"
+        )
+    elif unresolved:
+        errors.append(
+            f"{', '.join(missing)} absent from a non-shallow clone — "
+            "release identity cannot be judged without the tag objects"
+        )
     else:
         errors.extend(check_channel_agreement(release_sha, channel_sha))
 
@@ -438,8 +554,9 @@ def validate(
     """Run every release-identity check and return (errors, notes).
 
     Each check is a named function above that owns one question. This stays an
-    orchestrator so the order — structural, then local, then networked — is
-    readable in one screen and a new check has an obvious place to go.
+    orchestrator so the order — structural, then publication, then local and
+    networked — is readable in one screen and a new check has an obvious place
+    to go.
     """
     errors: list[str] = []
     notes: list[str] = []
@@ -449,8 +566,6 @@ def validate(
 
     errors.extend(check_ledger_policy(ledger))
     errors.extend(check_manifest_agreement(project, ledger))
-    release_status, status_errors = check_release_status(ledger)
-    errors.extend(status_errors)
 
     package_version = ledger.get("package_version")
     if not isinstance(package_version, str):
@@ -464,6 +579,12 @@ def validate(
         return errors, notes
 
     errors.extend(check_declared_refs(ledger, expected_tag, expected_channel))
+
+    # Publication is asked of the remote once, here: it is the fact that decides
+    # whether an unresolved local tag is a prepared release or a disagreement,
+    # and every mode below depends on that distinction.
+    publication, publication_errors = check_publication(remote, expected_tag)
+    errors.extend(publication_errors)
 
     if verify_tag and release_gate is not None:
         errors.append("--verify-tag and --release-gate are separate modes; pick one")
@@ -505,7 +626,7 @@ def validate(
         expected_channel,
         package_version,
         release_gate=release_gate is not None,
-        declared_pending=release_status == "pending",
+        publication=publication,
     )
     errors.extend(local_errors)
     notes.extend(local_notes)
@@ -550,7 +671,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.release_gate is not None:
         label = "release-gate"
     else:
-        label = "networked" if args.verify_tag else "local"
+        # The default mode is no longer local-only: publication is derived from
+        # the remote, so calling it "local" would misdescribe what ran.
+        label = "networked" if args.verify_tag else "default"
     print(f"PASS: release identity agrees ({ledger_path}, {label})")
     return 0
 
