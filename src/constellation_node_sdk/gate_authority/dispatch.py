@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
 from types import TracebackType
 from typing import Any
 from urllib.parse import urlsplit
@@ -19,6 +18,7 @@ from constellation_node_sdk.security.signing import sign_transport_packet
 from constellation_node_sdk.security.validation import validate_transport_packet
 from constellation_node_sdk.trace_context import TraceContext, inject_trace_context
 from constellation_node_sdk.transport.errors import TransportError
+from constellation_node_sdk.transport.key_binding import KeyResolver
 from constellation_node_sdk.transport.packet import TransportPacket
 
 from .config import GateDispatchTransportConfig
@@ -324,12 +324,10 @@ class GateDispatchTransport:
     # Signing and validation
     # ------------------------------------------------------------------
 
-    def _transport_key_resolver(
-        self,
-    ) -> Callable[[str | None], str | bytes | None] | Mapping[str, str | bytes] | None:
+    def _transport_key_resolver(self) -> KeyResolver:
         if not self._config.verifying_keys and self._config.signing_key is None:
             return None
-        return self._config.resolve_verifying_key
+        return self._config.bound_key_resolver()
 
     def _maybe_sign(self, packet: TransportPacket) -> TransportPacket:
         if self._config.signing_key is None:
@@ -357,11 +355,9 @@ class GateDispatchTransport:
             validate_transport_packet(
                 packet,
                 key_resolver=self._transport_key_resolver(),
-                key_algorithm=self._config.signing_algorithm,
                 require_signature=self._config.require_signature,
                 dev_mode=not self._config.require_signature,
                 verify_hop_signatures=self._config.verify_hop_signatures,
-                hop_key_algorithm=self._config.signing_algorithm,
             )
         except TransportError as exc:
             raise GateDispatchSecurityError(
@@ -374,11 +370,9 @@ class GateDispatchTransport:
             validate_transport_packet(
                 packet,
                 key_resolver=self._transport_key_resolver(),
-                key_algorithm=self._config.signing_algorithm,
                 require_signature=self._config.verify_response_signatures,
                 dev_mode=not self._config.verify_response_signatures,
                 verify_hop_signatures=self._config.verify_hop_signatures,
-                hop_key_algorithm=self._config.signing_algorithm,
             )
         except TransportError as exc:
             raise GateDispatchSecurityError(

@@ -1,8 +1,15 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from collections.abc import Callable
 
-from constellation_node_sdk.transport.key_binding import own_verifying_key
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+from constellation_node_sdk.transport.key_binding import (
+    KeyMaterial,
+    VerifyingKey,
+    bind_verifying_keys,
+    verifying_key_resolver,
+)
 
 
 class GateDispatchTransportConfig(BaseModel):
@@ -33,6 +40,11 @@ class GateDispatchTransportConfig(BaseModel):
 
     verify_response_signatures: bool = False
     verifying_keys: dict[str, str] = {}
+    # Per-key signature algorithm for verifying keys whose material is ambiguous
+    # (exactly 32 raw bytes): {key_id: "ed25519" | "hmac-sha256"}. A PEM Ed25519
+    # public key binds to ed25519 and any other raw value to hmac-sha256 without
+    # a declaration. The node's own signing algorithm never binds a peer key.
+    verifying_key_algorithms: dict[str, str] = {}
     verify_hop_signatures: bool = False
 
     @field_validator("local_gate_node")
@@ -65,13 +77,41 @@ class GateDispatchTransportConfig(BaseModel):
             normalized[normalized_key] = normalized_value
         return normalized
 
+    def bound_key_resolver(self) -> Callable[[str | None], KeyMaterial | None]:
+        """A resolver binding every key id to exactly one signature algorithm (D-1).
+
+        Peer keys bind by their declaration (``verifying_key_algorithms``) or, where
+        unambiguous, by their material; the own signing algorithm binds only the
+        own key id (ed25519 resolves to the derived public key). When a signature
+        is required, a key that cannot be bound is refused (fail closed).
+        """
+        return verifying_key_resolver(
+            verifying_keys=self.verifying_keys,
+            declared_algorithms=self.verifying_key_algorithms,
+            own_key_id=self.signing_key_id,
+            own_key=self.signing_key,
+            own_algorithm=self.signing_algorithm,
+            require_binding=self.require_signature or self.verify_response_signatures,
+        )
+
     def resolve_verifying_key(self, key_id: str | None) -> str | bytes | None:
-        if key_id is None:
-            return None
-        if key_id in self.verifying_keys:
-            return self.verifying_keys[key_id]
-        if self.signing_key_id is not None and key_id == self.signing_key_id:
-            # ed25519: the public key derived from our private key, never the
-            # private key itself. HMAC: the shared secret, as before.
-            return own_verifying_key(self.signing_key, self.signing_algorithm)
-        return None
+        """The raw verifying material for ``key_id`` (unchanged contract).
+
+        Verification uses :meth:`bound_key_resolver`, which also carries each
+        key's algorithm binding. This accessor never refuses an unbound key.
+        """
+        own_key = self.signing_key
+        value = verifying_key_resolver(
+            verifying_keys=self.verifying_keys,
+            declared_algorithms=self.verifying_key_algorithms,
+            own_key_id=self.signing_key_id,
+            own_key=own_key,
+            own_algorithm=self.signing_algorithm,
+        )(key_id)
+        return value.material if isinstance(value, VerifyingKey) else value
+
+    @model_validator(mode="after")
+    def validate_verifying_key_algorithms(self) -> GateDispatchTransportConfig:
+        """Every declaration names a known key id, a supported algorithm and agrees with the key."""
+        bind_verifying_keys(self.verifying_keys, self.verifying_key_algorithms)
+        return self

@@ -186,6 +186,8 @@ async def test_ed25519_client_sends_signed_packet_and_verifies_gate_response() -
         signing_algorithm="ed25519",
         verify_response_signatures=True,
         verifying_keys={"gate-gl": gate_public},
+        # A raw 32-byte key is ambiguous, so its algorithm is declared (D-1).
+        verifying_key_algorithms={"gate-gl": "ed25519"},
     )
 
     response = await GateClient(config, transport=transport).send_to_gate(_outbound_packet())

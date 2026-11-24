@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -17,6 +17,7 @@ from constellation_node_sdk._packet_http import (
 from constellation_node_sdk.security.signing import sign_transport_packet
 from constellation_node_sdk.security.validation import validate_transport_packet
 from constellation_node_sdk.transport.errors import TransportError
+from constellation_node_sdk.transport.key_binding import KeyResolver
 from constellation_node_sdk.transport.packet import TransportPacket, create_transport_packet
 from constellation_node_sdk.transport.provenance import RoutingProvenance
 from constellation_node_sdk.transport.tenant import TenantContext
@@ -293,12 +294,10 @@ class GateClient:
     # Packet transport primitive
     # ------------------------------------------------------------------
 
-    def _transport_key_resolver(
-        self,
-    ) -> Callable[[str | None], str | bytes | None] | Mapping[str, str | bytes] | None:
+    def _transport_key_resolver(self) -> KeyResolver:
         if not self._config.verifying_keys and self._config.signing_key is None:
             return None
-        return self._config.resolve_verifying_key
+        return self._config.bound_key_resolver()
 
     def _maybe_sign(self, packet: TransportPacket) -> TransportPacket:
         if self._config.signing_key is None:
@@ -339,11 +338,9 @@ class GateClient:
             validate_transport_packet(
                 packet,
                 key_resolver=self._transport_key_resolver(),
-                key_algorithm=self._config.signing_algorithm,
                 require_signature=self._config.require_signature,
                 dev_mode=not self._config.require_signature,
                 verify_hop_signatures=self._config.verify_hop_signatures,
-                hop_key_algorithm=self._config.signing_algorithm,
             )
         except TransportError as exc:
             raise GateSecurityError(
@@ -356,11 +353,9 @@ class GateClient:
             validate_transport_packet(
                 packet,
                 key_resolver=self._transport_key_resolver(),
-                key_algorithm=self._config.signing_algorithm,
                 require_signature=self._config.verify_response_signatures,
                 dev_mode=not self._config.verify_response_signatures,
                 verify_hop_signatures=self._config.verify_hop_signatures,
-                hop_key_algorithm=self._config.signing_algorithm,
             )
         except TransportError as exc:
             raise GateSecurityError(
