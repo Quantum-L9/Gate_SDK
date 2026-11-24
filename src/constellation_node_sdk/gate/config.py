@@ -8,10 +8,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from constellation_node_sdk.transport.key_binding import (
-    KeyMaterial,
-    VerifyingKey,
+    BoundVerifyingKeys,
     bind_verifying_keys,
-    verifying_key_resolver,
 )
 
 
@@ -74,7 +72,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-class GateClientConfig(BaseModel):
+class GateClientConfig(BoundVerifyingKeys, BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     gate_url: str
@@ -173,38 +171,8 @@ class GateClientConfig(BaseModel):
             )
         return problems
 
-    def bound_key_resolver(self) -> Callable[[str | None], KeyMaterial | None]:
-        """A resolver binding every key id to exactly one signature algorithm (D-1).
-
-        Peer keys bind by their declaration (``verifying_key_algorithms``) or, where
-        unambiguous, by their material; the own signing algorithm binds only the
-        own key id (ed25519 resolves to the derived public key). When a signature
-        is required, a key that cannot be bound is refused (fail closed).
-        """
-        return verifying_key_resolver(
-            verifying_keys=self.verifying_keys,
-            declared_algorithms=self.verifying_key_algorithms,
-            own_key_id=self.signing_key_id,
-            own_key=self.signing_key,
-            own_algorithm=self.signing_algorithm,
-            require_binding=self.require_signature or self.verify_response_signatures,
-        )
-
-    def resolve_verifying_key(self, key_id: str | None) -> str | bytes | None:
-        """The raw verifying material for ``key_id`` (unchanged contract).
-
-        Verification uses :meth:`bound_key_resolver`, which also carries each
-        key's algorithm binding. This accessor never refuses an unbound key.
-        """
-        own_key = self.signing_key
-        value = verifying_key_resolver(
-            verifying_keys=self.verifying_keys,
-            declared_algorithms=self.verifying_key_algorithms,
-            own_key_id=self.signing_key_id,
-            own_key=own_key,
-            own_algorithm=self.signing_algorithm,
-        )(key_id)
-        return value.material if isinstance(value, VerifyingKey) else value
+    def _binding_required(self) -> bool:
+        return self.require_signature or self.verify_response_signatures
 
     @model_validator(mode="after")
     def validate_verifying_key_algorithms(self) -> GateClientConfig:

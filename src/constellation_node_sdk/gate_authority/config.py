@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from constellation_node_sdk.transport.key_binding import (
-    KeyMaterial,
-    VerifyingKey,
+    BoundVerifyingKeys,
     bind_verifying_keys,
-    verifying_key_resolver,
 )
 
 
-class GateDispatchTransportConfig(BaseModel):
+class GateDispatchTransportConfig(BoundVerifyingKeys, BaseModel):
     """
     Configuration for Gate's worker-dispatch transport.
 
@@ -77,38 +73,8 @@ class GateDispatchTransportConfig(BaseModel):
             normalized[normalized_key] = normalized_value
         return normalized
 
-    def bound_key_resolver(self) -> Callable[[str | None], KeyMaterial | None]:
-        """A resolver binding every key id to exactly one signature algorithm (D-1).
-
-        Peer keys bind by their declaration (``verifying_key_algorithms``) or, where
-        unambiguous, by their material; the own signing algorithm binds only the
-        own key id (ed25519 resolves to the derived public key). When a signature
-        is required, a key that cannot be bound is refused (fail closed).
-        """
-        return verifying_key_resolver(
-            verifying_keys=self.verifying_keys,
-            declared_algorithms=self.verifying_key_algorithms,
-            own_key_id=self.signing_key_id,
-            own_key=self.signing_key,
-            own_algorithm=self.signing_algorithm,
-            require_binding=self.require_signature or self.verify_response_signatures,
-        )
-
-    def resolve_verifying_key(self, key_id: str | None) -> str | bytes | None:
-        """The raw verifying material for ``key_id`` (unchanged contract).
-
-        Verification uses :meth:`bound_key_resolver`, which also carries each
-        key's algorithm binding. This accessor never refuses an unbound key.
-        """
-        own_key = self.signing_key
-        value = verifying_key_resolver(
-            verifying_keys=self.verifying_keys,
-            declared_algorithms=self.verifying_key_algorithms,
-            own_key_id=self.signing_key_id,
-            own_key=own_key,
-            own_algorithm=self.signing_algorithm,
-        )(key_id)
-        return value.material if isinstance(value, VerifyingKey) else value
+    def _binding_required(self) -> bool:
+        return self.require_signature or self.verify_response_signatures
 
     @model_validator(mode="after")
     def validate_verifying_key_algorithms(self) -> GateDispatchTransportConfig:
