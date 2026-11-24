@@ -134,6 +134,7 @@ async def _handle_transport_request(
             signing_key_id=resolved_config.signing_key_id,
             signing_algorithm=response_signing_algorithm,
             verifying_keys=resolved_config.verifying_keys,
+            verifying_key_algorithms=resolved_config.verifying_key_algorithms,
             require_signature=route_validation["require_signature"],
             allowed_actions=route_validation["allowed_actions"],
             allowed_packet_types=route_validation["allowed_packet_types"],

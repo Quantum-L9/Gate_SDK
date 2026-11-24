@@ -138,7 +138,7 @@ def test_random_secret_control_is_refused_with_and_without_binding() -> None:
 
 
 def test_worker_runtime_refuses_the_forgery_under_ed25519() -> None:
-    """The runtime binds verifying keys to its configured algorithm."""
+    """The runtime binds a peer key to its declared algorithm."""
     gate_private, gate_public = _ed25519_identity()
     node_private, _ = _ed25519_identity()
     register_handler("match", lambda tenant, payload: {"ok": True})
@@ -157,6 +157,7 @@ def test_worker_runtime_refuses_the_forgery_under_ed25519() -> None:
                 signing_key_id="ceg-gl",
                 signing_algorithm="ed25519",
                 verifying_keys={"gate-gl": gate_public},
+                verifying_key_algorithms={"gate-gl": "ed25519"},
                 require_signature=True,
             )
         )

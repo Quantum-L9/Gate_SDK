@@ -17,8 +17,8 @@ import base64
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
 
 from constellation_node_sdk.transport.errors import TransportAuthenticationError
 
@@ -161,3 +161,127 @@ def own_verifying_key(
     else:
         raise TransportAuthenticationError("unsupported ed25519 private key format")
     return private_key.public_key().public_bytes_raw()
+
+
+def classify_key_material(material: str | bytes) -> str | None:
+    """
+    The one algorithm a verifying key's material can serve, or None when ambiguous.
+
+    * A PEM Ed25519 public key can only verify ed25519.
+    * Raw material that is not exactly 32 bytes cannot be an ed25519 public key,
+      so it can only be an HMAC secret.
+    * Exactly 32 raw bytes may be either a raw ed25519 public key or a 32-byte
+      shared secret, and any other PEM is not a supported verifying key: both
+      are ambiguous and need a declared algorithm.
+
+    Classification never consults the verifying node's own signing algorithm:
+    a peer's key is bound by what the key is, not by what the node uses.
+    """
+    raw = coerce_key_bytes(material)
+    if raw.startswith(b"-----BEGIN"):
+        try:
+            loaded = load_pem_public_key(raw)
+        except ValueError:
+            return None
+        return "ed25519" if isinstance(loaded, Ed25519PublicKey) else None
+    if len(raw) == 32:
+        return None
+    return "hmac-sha256"
+
+
+def bind_verifying_keys(
+    verifying_keys: Mapping[str, str],
+    declared_algorithms: Mapping[str, str] | None = None,
+) -> dict[str, VerifyingKey | str]:
+    """
+    Bind each verifying key id to exactly one algorithm where that is knowable.
+
+    A declared algorithm wins; otherwise the material is classified. A key
+    whose material is ambiguous and that has no declaration stays unbound (its
+    raw value is returned) so the caller can refuse it. A declaration for an
+    unknown key id, an unsupported algorithm, or a declaration that contradicts
+    what the material can serve is a configuration error (ValueError).
+    """
+    declared = dict(declared_algorithms or {})
+    unknown = sorted(set(declared) - set(verifying_keys))
+    if unknown:
+        raise ValueError(f"verifying key algorithms declared for unknown key ids: {unknown}")
+    bound: dict[str, VerifyingKey | str] = {}
+    for key_id, material in verifying_keys.items():
+        classified = classify_key_material(material)
+        if key_id in declared:
+            algorithm = _normalize_algorithm(declared[key_id])
+            if algorithm is None:
+                raise ValueError(
+                    f"verifying key {key_id!r}: algorithm must be one of "
+                    f"{sorted(_SUPPORTED_ALGORITHMS)}"
+                )
+            if classified is not None and classified != algorithm:
+                raise ValueError(
+                    f"verifying key {key_id!r} is declared {algorithm!r} but its material "
+                    f"can only be {classified!r}"
+                )
+            bound[key_id] = VerifyingKey(algorithm, material)
+        elif classified is not None:
+            bound[key_id] = VerifyingKey(classified, material)
+        else:
+            bound[key_id] = material
+    return bound
+
+
+def verifying_key_resolver(
+    *,
+    verifying_keys: Mapping[str, str],
+    declared_algorithms: Mapping[str, str] | None = None,
+    own_key_id: str | None = None,
+    own_key: str | bytes | None = None,
+    own_algorithm: str | None = None,
+    own_key_for_unknown_ids: bool = False,
+    require_binding: bool = False,
+) -> Callable[[str | None], KeyMaterial | None]:
+    """
+    A key resolver that binds every key id it resolves to exactly one algorithm.
+
+    * Peer key ids are bound by :func:`bind_verifying_keys` (declaration, else
+      material). The node's own signing algorithm never binds a peer key.
+    * The node's own key id is bound to its own signing algorithm, resolving
+      ed25519 to the public key (:func:`own_verifying_key`).
+    * ``own_key_for_unknown_ids`` keeps the runtime's shared-secret mode (no
+      verifying keys: every key id verifies with the node's own secret), which
+      is still the node's own key and so carries its own algorithm.
+    * With ``require_binding``, a key that cannot be bound is refused here
+      instead of letting the packet choose its algorithm (fail closed).
+    """
+    bound = bind_verifying_keys(verifying_keys, declared_algorithms)
+    own_material: str | bytes | None = None
+    own_bound: str | None = _normalize_algorithm(own_algorithm)
+    if own_key is not None:
+        own_material = own_verifying_key(own_key, own_algorithm)
+
+    def _own() -> KeyMaterial | None:
+        if own_material is None:
+            return None
+        if own_bound is not None:
+            return VerifyingKey(own_bound, own_material)
+        return own_material
+
+    def resolve(key_id: str | None) -> KeyMaterial | None:
+        if key_id is not None and key_id in bound:
+            value = bound[key_id]
+            if isinstance(value, VerifyingKey):
+                return value
+            if key_id == own_key_id and own_bound is not None:
+                return VerifyingKey(own_bound, value)
+            if require_binding:
+                raise TransportAuthenticationError(
+                    f"verifying key {key_id!r} has no declared signature algorithm and its "
+                    "material is ambiguous; declare it in L9_VERIFYING_KEY_ALGORITHMS_JSON"
+                )
+            return value
+        if key_id is not None and key_id == own_key_id:
+            return _own()
+        if own_key_for_unknown_ids and not bound:
+            return _own()
+        return None
+
+    return resolve

@@ -6,6 +6,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **A peer's verifying key is bound by the key, never by the node's own
+  algorithm (D-1 regression in 1.3.3).** 1.3.3 bound every verifying key to the
+  verifying node's own `signing_algorithm`, so a node signing hmac-sha256 refused
+  Gate's ed25519 signatures (GATE-KEY-01). Each key id is still bound to exactly
+  one algorithm, now taken from a per-key declaration (`verifying_key_algorithms`
+  on `NodeRuntimeConfig`, `GateClientConfig` and `GateDispatchTransportConfig`;
+  env `L9_VERIFYING_KEY_ALGORITHMS_JSON`) or, where unambiguous, from the
+  material: a PEM Ed25519 public key is ed25519, raw material that is not 32
+  bytes is an HMAC secret. An undeclared 32-byte raw key is ambiguous and is
+  refused when a signature is required. The node's own algorithm binds only its
+  own key id. A declaration for an unknown key id, an unsupported algorithm, or
+  one contradicting the key material is a configuration error.
+  `resolve_verifying_key` still returns raw material; verification uses the new
+  `bound_key_resolver()`.
+
 ## [1.3.3] — 2026-11-24
 
 ### Security

@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from functools import lru_cache
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from constellation_node_sdk.transport.key_binding import (
+    KeyMaterial,
+    VerifyingKey,
+    bind_verifying_keys,
+    verifying_key_resolver,
+)
 
 _ALLOWED_ENVIRONMENTS = {"local", "dev", "test", "staging", "prod"}
 _ALLOWED_SIGNING_ALGORITHMS = {"hmac-sha256", "ed25519"}
@@ -55,6 +63,11 @@ class NodeRuntimeConfig(BaseModel):
     signing_private_key: str | None = None
     signing_key_id: str | None = None
     verifying_keys: dict[str, str] = Field(default_factory=dict)
+    # Per-key signature algorithm for verifying keys whose material is ambiguous
+    # (exactly 32 raw bytes): {key_id: "ed25519" | "hmac-sha256"}. A PEM Ed25519
+    # public key binds to ed25519 and any other raw value to hmac-sha256 without
+    # a declaration. The node's own signing algorithm never binds a peer key.
+    verifying_key_algorithms: dict[str, str] = Field(default_factory=dict)
 
     allowed_actions: tuple[str, ...] = ()
     allowed_packet_types: tuple[str, ...] = ("request", "command", "delegation", "replay_request")
@@ -190,6 +203,12 @@ class NodeRuntimeConfig(BaseModel):
         return normalized
 
     @model_validator(mode="after")
+    def validate_verifying_key_algorithms(self) -> NodeRuntimeConfig:
+        """Every declaration names a known key id, a supported algorithm and agrees with the key."""
+        bind_verifying_keys(self.verifying_keys, self.verifying_key_algorithms)
+        return self
+
+    @model_validator(mode="after")
     def validate_security_profile(self) -> NodeRuntimeConfig:
         if self.environment in {"staging", "prod"} and self.dev_mode:
             raise ValueError("dev_mode cannot be enabled in staging or prod")
@@ -231,15 +250,43 @@ class NodeRuntimeConfig(BaseModel):
 
         return self
 
+    def bound_key_resolver(self) -> Callable[[str | None], KeyMaterial | None]:
+        """A resolver binding every key id to exactly one signature algorithm (D-1).
+
+        Peer keys bind by their declaration (``verifying_key_algorithms``) or, where
+        unambiguous, by their material; the own signing algorithm binds only the
+        own key id (ed25519 resolves to the derived public key). When a signature
+        is required, a key that cannot be bound is refused (fail closed).
+        """
+        own_key = (
+            self.signing_private_key if self.signing_algorithm == "ed25519" else self.signing_key
+        )
+        return verifying_key_resolver(
+            verifying_keys=self.verifying_keys,
+            declared_algorithms=self.verifying_key_algorithms,
+            own_key_id=self.signing_key_id,
+            own_key=own_key,
+            own_algorithm=self.signing_algorithm,
+            require_binding=self.require_signature,
+        )
+
     def resolve_verifying_key(self, key_id: str | None) -> str | bytes | None:
-        if key_id is None:
-            return None
-        if key_id in self.verifying_keys:
-            return self.verifying_keys[key_id]
-        if self.signing_key_id is not None and key_id == self.signing_key_id:
-            if self.signing_algorithm == "hmac-sha256":
-                return self.signing_key
-        return None
+        """The raw verifying material for ``key_id`` (unchanged contract).
+
+        Verification uses :meth:`bound_key_resolver`, which also carries each
+        key's algorithm binding. This accessor never refuses an unbound key.
+        """
+        own_key = (
+            self.signing_private_key if self.signing_algorithm == "ed25519" else self.signing_key
+        )
+        value = verifying_key_resolver(
+            verifying_keys=self.verifying_keys,
+            declared_algorithms=self.verifying_key_algorithms,
+            own_key_id=self.signing_key_id,
+            own_key=own_key,
+            own_algorithm=self.signing_algorithm,
+        )(key_id)
+        return value.material if isinstance(value, VerifyingKey) else value
 
 
 @lru_cache
@@ -260,6 +307,7 @@ def get_runtime_config() -> NodeRuntimeConfig:
         signing_private_key=os.getenv("L9_SIGNING_PRIVATE_KEY"),
         signing_key_id=os.getenv("L9_SIGNING_KEY_ID"),
         verifying_keys=_env_json_map("L9_VERIFYING_KEYS_JSON"),
+        verifying_key_algorithms=_env_json_map("L9_VERIFYING_KEY_ALGORITHMS_JSON"),
         allowed_actions=_env_tuple("L9_ALLOWED_ACTIONS"),
         allowed_packet_types=_env_tuple("L9_ALLOWED_PACKET_TYPES")
         or ("request", "command", "delegation", "replay_request"),

@@ -8,6 +8,7 @@ from typing import Final, cast
 from constellation_node_sdk.security.signing import sign_transport_packet
 from constellation_node_sdk.security.validation import validate_transport_packet
 from constellation_node_sdk.transport.hop_trace import make_execution_hop, make_response_hop
+from constellation_node_sdk.transport.key_binding import KeyMaterial, verifying_key_resolver
 from constellation_node_sdk.transport.packet import TransportPacket
 
 from .handlers import get_handler
@@ -32,13 +33,37 @@ def _resolve_signing_material(
 def _build_key_resolver(
     *,
     signing_key: bytes | str | None,
+    signing_private_key: str | None,
+    signing_key_id: str | None,
+    signing_algorithm: str | None,
     verifying_keys: dict[str, str] | None,
-) -> Callable[[str | None], str | bytes | None] | dict[str, str] | None:
-    if verifying_keys:
-        return verifying_keys
-    if signing_key is None:
+    verifying_key_algorithms: dict[str, str] | None,
+    require_signature: bool,
+) -> Callable[[str | None], KeyMaterial | None] | None:
+    """
+    Bind every verifying key id to exactly one signature algorithm (D-1).
+
+    Peer keys are bound by their declared algorithm or, where unambiguous, by
+    their material; the node's own signing algorithm binds only its own key id.
+    With no verifying keys, an HMAC node keeps its shared-secret mode (every key
+    id verifies with its own secret, under its own algorithm).
+    """
+    if not verifying_keys and signing_key is None:
         return None
-    return lambda _key_id: signing_key
+    own_key = _resolve_signing_material(
+        signing_key=signing_key,
+        signing_private_key=signing_private_key,
+        signing_algorithm=signing_algorithm,
+    )
+    return verifying_key_resolver(
+        verifying_keys=verifying_keys or {},
+        declared_algorithms=verifying_key_algorithms,
+        own_key_id=signing_key_id,
+        own_key=own_key,
+        own_algorithm=signing_algorithm,
+        own_key_for_unknown_ids=signing_key is not None,
+        require_binding=require_signature,
+    )
 
 
 async def _invoke_handler(handler: Callable[..., object], packet: TransportPacket) -> object:
@@ -73,6 +98,7 @@ async def execute_transport_packet(
     signing_key_id: str | None = None,
     signing_algorithm: str | None = None,
     verifying_keys: dict[str, str] | None = None,
+    verifying_key_algorithms: dict[str, str] | None = None,
     require_signature: bool = False,
     allowed_actions: tuple[str, ...] | None = None,
     allowed_packet_types: tuple[str, ...] | None = None,
@@ -92,13 +118,17 @@ async def execute_transport_packet(
     normalized_node_name = node_name.strip().lower()
     key_resolver = _build_key_resolver(
         signing_key=signing_key,
+        signing_private_key=signing_private_key,
+        signing_key_id=signing_key_id,
+        signing_algorithm=signing_algorithm,
         verifying_keys=verifying_keys,
+        verifying_key_algorithms=verifying_key_algorithms,
+        require_signature=require_signature,
     )
 
     validate_transport_packet(
         packet,
         key_resolver=key_resolver,
-        key_algorithm=signing_algorithm,
         require_signature=require_signature,
         max_packet_bytes=max_packet_bytes,
         max_hop_depth=max_hop_depth,
@@ -116,7 +146,6 @@ async def execute_transport_packet(
         dev_mode=dev_mode,
         verify_hop_signatures=verify_hop_signatures,
         hop_key_resolver=key_resolver,
-        hop_key_algorithm=signing_algorithm,
     )
 
     handler = get_handler(packet.header.action)
