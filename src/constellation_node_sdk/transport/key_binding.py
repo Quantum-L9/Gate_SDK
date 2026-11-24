@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
@@ -285,3 +286,55 @@ def verifying_key_resolver(
         return None
 
     return resolve
+
+
+class BoundVerifyingKeys:
+    """
+    Verifying-key resolution shared by the SDK's signing configurations.
+
+    A configuration that mixes this in exposes ``verifying_keys``,
+    ``verifying_key_algorithms``, ``signing_key_id`` and ``signing_algorithm``,
+    and overrides :meth:`_own_signing_material` and :meth:`_binding_required`
+    where its own key or its signature policy differ.
+    """
+
+    if TYPE_CHECKING:
+        verifying_keys: dict[str, str]
+        verifying_key_algorithms: dict[str, str]
+        signing_key_id: str | None
+        signing_algorithm: str | None
+
+    def _own_signing_material(self) -> str | bytes | None:
+        return getattr(self, "signing_key", None)
+
+    def _binding_required(self) -> bool:
+        return False
+
+    def _resolver(self, *, require_binding: bool) -> Callable[[str | None], KeyMaterial | None]:
+        return verifying_key_resolver(
+            verifying_keys=self.verifying_keys,
+            declared_algorithms=self.verifying_key_algorithms,
+            own_key_id=self.signing_key_id,
+            own_key=self._own_signing_material(),
+            own_algorithm=self.signing_algorithm,
+            require_binding=require_binding,
+        )
+
+    def bound_key_resolver(self) -> Callable[[str | None], KeyMaterial | None]:
+        """A resolver binding every key id to exactly one signature algorithm (D-1).
+
+        Peer keys bind by their declaration (``verifying_key_algorithms``) or, where
+        unambiguous, by their material; the own signing algorithm binds only the
+        own key id (ed25519 resolves to the derived public key). When a signature
+        is required, a key that cannot be bound is refused (fail closed).
+        """
+        return self._resolver(require_binding=self._binding_required())
+
+    def resolve_verifying_key(self, key_id: str | None) -> str | bytes | None:
+        """The raw verifying material for ``key_id`` (unchanged contract).
+
+        Verification uses :meth:`bound_key_resolver`, which also carries each
+        key's algorithm binding. This accessor never refuses an unbound key.
+        """
+        value = self._resolver(require_binding=False)(key_id)
+        return value.material if isinstance(value, VerifyingKey) else value
