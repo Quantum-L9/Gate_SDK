@@ -6,7 +6,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [1.3.3] — 2026-11-24
 
 ### Security
 - **A signing key id is bound to exactly one signature algorithm (D-1).**
@@ -69,6 +69,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **The release SBOM describes the built wheel.** Gate 5 installs the runtime
   lock plus the wheel gate 4 produced, instead of an editable install, which
   would have required the build toolchain and listed it in the SBOM.
+- **A prepared release is validated before its tag exists.** The release-identity
+  validator treated the absence of the exact tag on a full clone as a disagreement,
+  which no release-preparation pull request can satisfy: the tag cannot exist before
+  the merge that creates it. The ledger now states `github_release_status`
+  (`pending` while prepared, `created` once published); a `pending` ledger defers the
+  tag-object and channel checks to the release gate, which still requires the tag,
+  HEAD == that object, and an ancestor channel.
 - `scripts/lock_requirements.py` regenerates every lock (scoped refresh;
   `LOCK_UPGRADE_ALL=1` for a full one). `scripts/validate_locks.py` (gate 2 and
   release gate 2) fails on a stale or disagreeing lock and on any unlocked
